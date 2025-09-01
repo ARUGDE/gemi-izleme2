@@ -1,9 +1,9 @@
 import streamlit as st
 from datetime import datetime, timedelta, timezone
+import time
 import firebase_admin
 from firebase_admin import credentials, db
 import json
-import time # Otomatik yenileme için eklendi
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="Gemi Operasyon Takibi", layout="wide")
