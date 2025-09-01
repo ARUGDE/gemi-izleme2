@@ -8,15 +8,6 @@ import json
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="Gemi Operasyon Takibi", layout="wide")
 
-# -------------------------------------------------------------------
-# 1. ADIM: İZLEMEK İSTEDİĞİNİZ TANKLARI BURAYA YAZIN
-# -------------------------------------------------------------------
-# Değişiklik yapmak istediğinizde sadece bu listeyi güncelleyin.
-# Örnek: ['072', '312', '314']
-TANKS_TO_MONITOR = ['072', '312', '314']
-# -------------------------------------------------------------------
-
-
 # --- STATİK VERİLER (VEM_DATA) ---
 VEM_DATA = {
     "001": 391.791, "002": 389.295, "003": 392.011, "004": 391.557, "005": 389.851, 
@@ -95,31 +86,59 @@ def get_live_data(_ref):
 # --- STREAMLIT ARAYÜZÜ (NİHAİ VE BASİT MİMARİ) ---
 st.title("🚢 Gemi Operasyonları Canlı Takip Paneli")
 
+# Session state'i başlat
+if 'selected_tanks' not in st.session_state:
+    st.session_state.selected_tanks = []
+
 ref = init_firebase()
 status_placeholder = st.empty()
+
+# DÖNGÜNÜN DIŞINDA: Tank seçimi kutusunu oluştur
+# Bu, takılma ve kaybolma sorunlarını çözer.
+all_tanks_data_for_select = get_live_data(ref) # En güncel listeyi al
+if all_tanks_data_for_select:
+    sorted_tanks = sorted(
+        all_tanks_data_for_select.keys(),
+        key=lambda k: all_tanks_data_for_select[k].get('updated_at', ''),
+        reverse=True
+    )
+    st.session_state.selected_tanks = st.multiselect(
+        "İzlemek istediğiniz tankları seçiniz:",
+        options=sorted_tanks,
+        default=st.session_state.selected_tanks,
+        key="tank_selector"
+    )
+else:
+    st.info("İzlenecek tank bulunamadı. Lütfen lokaldeki 'itici' scriptinin çalıştığından emin olun.")
+
+# Kartların çizileceği ana konteyner
 main_container = st.container()
 
 # ANA YENİLEME DÖNGÜSÜ
 while True:
     all_tanks_data = get_live_data(ref)
+    tanks_to_display = st.session_state.selected_tanks
     
     # Durum mesajı
     if not ref:
          status_placeholder.error("Firebase bağlantısı kurulamadı. Lütfen Streamlit Cloud 'Secrets' ayarlarını kontrol edin.")
     elif not all_tanks_data:
-        status_placeholder.warning("Veri bekleniyor... Lokaldeki 'itici.py' script'inin çalıştığından emin olun.")
+        status_placeholder.warning("Veri bekleniyor... Tarayıcıda Bookmarklet'in çalıştığından emin olun.")
+    elif not tanks_to_display:
+        status_placeholder.info("Lütfen yukarıdan izlemek istediğiniz bir veya daha fazla tank seçin.")
     else:
-        status_placeholder.success(f"{len(TANKS_TO_MONITOR)} adet tank izleniyor. (Son Güncelleme: {datetime.now(timezone(timedelta(hours=3))).strftime('%H:%M:%S')})")
+        status_placeholder.success(f"{len(tanks_to_display)} adet tank izleniyor. (Son Güncelleme: {datetime.now(timezone(timedelta(hours=3))).strftime('%H:%M:%S')})")
 
     # Sıralama için geçici bir liste oluştur
     display_list = []
-    for tank_no in TANKS_TO_MONITOR:
-        data = all_tanks_data.get(tank_no, {})
-        gov = data.get('gov', 0)
-        rate = data.get('rate', 0)
-        vem = VEM_DATA.get(tank_no, 0)
-        kalan_saat = ((vem - gov) / rate) if rate > 0 and vem > gov else float('inf')
-        display_list.append({'tank_no': tank_no, 'data': data, 'kalan_saat': kalan_saat})
+    if all_tanks_data:
+        for tank_no in tanks_to_display:
+            data = all_tanks_data.get(tank_no, {})
+            gov = data.get('gov', 0)
+            rate = data.get('rate', 0)
+            vem = VEM_DATA.get(tank_no, 0)
+            kalan_saat = ((vem - gov) / rate) if rate > 0 and vem > gov else float('inf')
+            display_list.append({'tank_no': tank_no, 'data': data, 'kalan_saat': kalan_saat})
     
     display_list.sort(key=lambda x: x['kalan_saat'])
 
@@ -164,5 +183,5 @@ while True:
                 detail_html = f"""<div style='font-size: 1.1rem; text-align: center;'><b>Vem:</b> {vem:,.3f} m³ | <b>GOV:</b> {gov:,.3f} m³ | <b>Kalan:</b> {kalan_hacim:,.3f} m³</div>""".replace(",", "X").replace(".", ",").replace("X", ".")
                 d_col.markdown(detail_html, unsafe_allow_html=True)
 
-    time.sleep(3)
+    time.sleep(2)
 
