@@ -17,7 +17,7 @@ st.set_page_config(
 # YAPILANDIRMA: İZLENECEK TANKLAR
 # -------------------------------------------------------------------
 # Hangi tankların izleneceğini değiştirmek için bu listeyi güncelleyin
-TANKS_TO_MONITOR = ['072', '312', '314']
+TANKS_TO_MONITOR = ['069', '140', '150', '312', '314']
 # -------------------------------------------------------------------
 
 # --- STATİK VERİLER (VEM_DATA) ---
@@ -248,7 +248,7 @@ def main():
         # Başarılı durumda, ana mesajı soldaki kolona, saati sağdaki kolona yaz.
         # Böylece sadece saat güncellenir ve sayfa atlamaz.
         status_col1.success(
-            f"{len(TANKS_TO_MONITOR)} adet tank izleniyor."
+            f"{len(TANKS_TO_MONITOR)} adet tank izleniyor. Otomatik yenileme süresi 5 saniye."
         )
         timezone_tr = timezone(timedelta(hours=3))
         current_time = datetime.now(timezone_tr).strftime('%H:%M:%S')
@@ -270,8 +270,8 @@ def main():
     for i, metrics in enumerate(tank_metrics):
         render_tank_card(metrics, f"{metrics['tank_no']}_{i}")
     
-    # Sayfayı 3 saniyede bir otomatik olarak yenile
-    time.sleep(3)
+    # Sayfayı 5 saniyede bir otomatik olarak yenile
+    time.sleep(5)
     st.rerun()
 
 if __name__ == "__main__":
