@@ -17,7 +17,7 @@ st.set_page_config(
 # YAPILANDIRMA: İZLENECEK TANKLAR
 # -------------------------------------------------------------------
 # Hangi tankların izleneceğini değiştirmek için bu listeyi güncelleyin
-TANKS_TO_MONITOR = ['069', '061', '073', '069', '153', '056', '065', '140', '150', '312', '314']
+TANKS_TO_MONITOR = ['069', '061', '73', '069', '153', '056', '065', '140', '150', '312', '314']
 # -------------------------------------------------------------------
 
 # --- STATİK VERİLER (VEM_DATA) ---
