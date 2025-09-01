@@ -90,8 +90,9 @@ def get_live_data(ref):
 
 # Tank listesini almak için cached fonksiyon
 @st.cache_data(ttl=60)  # 1 dakika cache
-def get_available_tanks(ref):
+def get_available_tanks():
     """Veritabanından mevcut tüm tankların listesini çeker."""
+    ref = init_firebase()
     if ref is None: 
         return []
     try:
@@ -122,7 +123,7 @@ ref = init_firebase()
 auto_refresh = st.empty()
 
 # Tank seçimi
-available_tanks = get_available_tanks(ref)
+available_tanks = get_available_tanks()
 if available_tanks:
     selected_tanks = st.multiselect(
         "İzlemek istediğiniz tankları seçiniz:",
