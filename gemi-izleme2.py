@@ -59,22 +59,17 @@ VEM_DATA = {
 # --- FIREBASE BAĞLANTISI (NİHAİ ve SAĞLAM YÖNTEM) ---
 @st.cache_resource
 def init_firebase():
-    """
-    Streamlit Secrets'tan alınan bilgileri geçici bir dosyaya yazarak
-    Firebase bağlantısını en sağlam şekilde kurar.
-    """
     try:
         # 1. Adım: Streamlit'in Secrets'ından credential bilgilerini al
         cred_dict = st.secrets["firebase_credentials"]
-        db_url = st.secrets("firebase_url")
+        db_url = st.secrets["firebase_url"]
         
         # 2. Adım: Bu bilgileri geçici bir JSON dosyasına yaz
         with open("temp_credentials.json", "w") as f:
-            json.dump(dict(cred_dict), f)
+            json.dump(cred_dict, f)
             
-        # 3. Adım: Firebase'i bu dosyanın yoluyla başlat
+        # 3. Adım: Firebase'i başlat
         if not firebase_admin._apps:
-            # Dosya yolunu vererek başlatmak, en güvenilir yöntemdir
             cred = credentials.Certificate("temp_credentials.json")
             firebase_admin.initialize_app(cred, {'databaseURL': db_url})
             
