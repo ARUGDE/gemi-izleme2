@@ -56,28 +56,25 @@ VEM_DATA = {
     "313": 2584.728,"314": 4047.136,"315": 4046.604,"316": 817.511
 }
 
-# --- FIREBASE BAĞLANTISI ---
+# --- YARDIMCI FONKSİYONLAR ---
 @st.cache_resource
 def init_firebase():
-    """Firebase bağlantısını kurar."""
+    """Firebase bağlantısını başlatır ve cache'ler."""
     try:
         cred_dict = st.secrets["firebase_credentials"]
         db_url = "https://gemi-izleme-default-rtdb.europe-west1.firebasedatabase.app"
-        
         with open("temp_credentials.json", "w") as f:
             json.dump(dict(cred_dict), f)
-            
         if not firebase_admin._apps:
             cred = credentials.Certificate("temp_credentials.json")
             firebase_admin.initialize_app(cred, {'databaseURL': db_url})
-            
         return db.reference('live_tanks')
-
     except Exception as e:
-        st.error(f"Firebase bağlantısı kurulamadı. Hata: {e}")
+        st.error(f"Firebase bağlantısı kurulamadı: {e}")
         return None
 
-@st.cache_data(ttl=3) # Her 3 saniyede bir Firebase'den veri çek
+# SADECE anlık veriyi çekmek için, ttl'i olan ayrı bir fonksiyon
+@st.cache_data(ttl=2) 
 def get_live_data(_ref):
     """Veritabanından anlık veriyi çeker."""
     if _ref is None: return {}
@@ -87,18 +84,17 @@ def get_live_data(_ref):
         st.warning(f"Veri çekilirken hata oluştu: {e}")
         return {}
 
-def create_progress_bar_html(percentage):
-    """Yüksekliği ayarlanabilir, renkli ve yazılı bir progress bar HTML'i oluşturur."""
-    color = "#198754"  # Yeşil
-    if percentage >= 90: color = "#dc3545"  # Kırmızı
-    elif percentage >= 75: color = "#ffc107"  # Sarı
-    
-    percentage = max(0, min(percentage, 100))
-    
-    bar_style = f"width: {percentage}%; background-color: {color}; height: 28px; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 1rem; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);"
-    container_style = "width: 100%; background-color: #e9ecef; border-radius: 5px; height: 28px;"
-    html_code = f'<div style="{container_style}"><div style="{bar_style}">{percentage:.2f}%</div></div>'
-    return html_code
+# SADECE tank listesini almak için, ttl'i olmayan ayrı bir fonksiyon
+@st.cache_data
+def get_available_tanks(_ref):
+    """Veritabanından mevcut tüm tankların listesini bir kez çeker."""
+    if _ref is None: return []
+    try:
+        data = _ref.get() or {}
+        return sorted(data.keys())
+    except Exception as e:
+        st.warning(f"Tank listesi çekilirken hata oluştu: {e}")
+        return []
 
 # --- STREAMLIT ARAYÜZÜ ---
 st.title("🚢 Gemi Operasyonları Canlı Takip Paneli")
@@ -106,34 +102,31 @@ st.title("🚢 Gemi Operasyonları Canlı Takip Paneli")
 # Session state'i başlat
 if 'selected_tanks' not in st.session_state:
     st.session_state.selected_tanks = []
+if 'placeholders' not in st.session_state:
+    st.session_state.placeholders = {}
 
 ref = init_firebase()
 status_placeholder = st.empty()
 
 # DÖNGÜNÜN DIŞINDA: Tank seçimi kutusunu oluştur
 # Bu, takılma ve kaybolma sorunlarını çözer.
-all_tanks_data_for_select = get_live_data(ref)
-if all_tanks_data_for_select:
-    sorted_tanks = sorted(
-        all_tanks_data_for_select.keys(),
-        key=lambda k: all_tanks_data_for_select[k].get('updated_at', ''),
-        reverse=True
-    )
+available_tanks = get_available_tanks(ref)
+if available_tanks:
     st.session_state.selected_tanks = st.multiselect(
         "İzlemek istediğiniz tankları seçiniz:",
-        options=sorted_tanks,
+        options=available_tanks,
         default=st.session_state.selected_tanks,
-        key="tank_selector"
+        key="tank_selector" # Sabit bir anahtar atıyoruz
     )
-
-# Kartların çizileceği ana konteyner
-main_container = st.container()
+else:
+    st.info("İzlenecek tank bulunamadı. Lütfen lokaldeki 'itici' scriptinin çalıştığından emin olun.")
 
 # ANA YENİLEME DÖNGÜSÜ
 while True:
     all_tanks_data = get_live_data(ref)
     tanks_to_display = st.session_state.selected_tanks
-    
+    placeholders = st.session_state.placeholders
+
     # Durum mesajı
     if not ref:
          status_placeholder.error("Firebase bağlantısı kurulamadı. Lütfen Streamlit Cloud 'Secrets' ayarlarını kontrol edin.")
@@ -143,7 +136,15 @@ while True:
         status_placeholder.info("Lütfen yukarıdan izlemek istediğiniz bir veya daha fazla tank seçin.")
     else:
         status_placeholder.success(f"{len(tanks_to_display)} adet tank izleniyor. (Son Güncelleme: {datetime.now(timezone(timedelta(hours=3))).strftime('%H:%M:%S')})")
-    
+
+    # Placeholder'ları yönet: Seçimden kaldırılanları sil
+    current_selection_set = set(tanks_to_display)
+    previous_placeholder_set = set(placeholders.keys())
+
+    for tank_no in previous_placeholder_set - current_selection_set:
+        placeholders[tank_no].empty()
+        del placeholders[tank_no]
+        
     # Sıralama için geçici bir liste oluştur
     display_list = []
     if all_tanks_data:
@@ -157,11 +158,16 @@ while True:
     
     display_list.sort(key=lambda x: x['kalan_saat'])
 
-    # Ana konteyneri temizle ve kartları sıfırdan çiz
-    with main_container:
-        main_container.empty()
-        for item in display_list:
-            tank_no = item['tank_no']
+    # Kartları, her tank kendi placeholder'ına çiz
+    for item in display_list:
+        tank_no = item['tank_no']
+        
+        # Eğer placeholder yoksa, bu tank için yeni bir tane oluştur
+        if tank_no not in placeholders:
+            placeholders[tank_no] = st.empty()
+
+        # Kartı, o tanka özel olan placeholder'ın içine çiz
+        with placeholders[tank_no].container(border=True):
             data = item['data']
             kalan_saat = item['kalan_saat']
             
@@ -182,22 +188,20 @@ while True:
                 kalan_saat_int, kalan_dakika_int = int(kalan_saat), int((kalan_saat * 60) % 60)
                 kalan_sure_str = f"{kalan_saat_int} sa {kalan_dakika_int} dk"
 
-            with st.container(border=True):
-                col1, col2, col3, col4 = st.columns([1.5, 1, 1, 1]) # Başlık sütununu biraz genişlet
-                title = f"T{tank_no}"
-                if product_name != 'Bilinmiyor' and product_name and not product_name.isspace():
-                    title += f" / {product_name}"
-                col1.markdown(f"<h3 style='line-height: 1.2; margin-bottom: 0px;'>{title}</h3>", unsafe_allow_html=True)
-                
-                col2.metric(label="Tahmini Bitiş Saati", value=tahmini_bitis_str)
-                col3.metric(label="Kalan Süre", value=kalan_sure_str)
-                col4.metric(label="Rate (m³/h)", value=f"{rate:.3f}")
+            col1, col2, col3, col4 = st.columns(4)
+            title = f"T{tank_no}"
+            if product_name != 'Bilinmiyor': title += f" / {product_name}"
+            col1.markdown(f"<h3>{title}</h3>", unsafe_allow_html=True)
+            
+            col2.metric(label="Tahmini Bitiş Saati", value=tahmini_bitis_str)
+            col3.metric(label="Kalan Süre", value=kalan_sure_str)
+            col4.metric(label="Rate (m³/h)", value=f"{rate:.3f}")
 
-                p_col, d_col = st.columns([2, 1])
-                p_col.markdown(create_progress_bar_html(progress_yuzde), unsafe_allow_html=True)
-                
-                detail_html = f"""<div style='font-size: 1.1rem; text-align: center; padding-top: 4px;'><b>Vem:</b> {vem:,.3f} m³ | <b>GOV:</b> {gov:,.3f} m³ | <b>Kalan:</b> {kalan_hacim:,.3f} m³</div>""".replace(",", "X").replace(".", ",").replace("X", ".")
-                d_col.markdown(detail_html, unsafe_allow_html=True)
+            p_col, d_col = st.columns([2, 1])
+            p_col.progress(min(int(progress_yuzde), 100), text=f"{progress_yuzde:.2f}%")
+            
+            detail_html = f"""<div style='font-size: 1.1rem; text-align: center;'><b>Vem:</b> {vem:,.3f} m³ | <b>GOV:</b> {gov:,.3f} m³ | <b>Kalan:</b> {kalan_hacim:,.3f} m³</div>""".replace(",", "X").replace(".", ",").replace("X", ".")
+            d_col.markdown(detail_html, unsafe_allow_html=True)
 
-    time.sleep(3) # Arayüzü 3 saniyede bir yenile
+    time.sleep(2)
 
