@@ -84,16 +84,28 @@ def init_firebase():
         st.error(f"Firebase bağlantısı kurulamadı. Secrets ayarlarınızı kontrol edin. Hata: {e}")
         return None
 
-@st.cache_data(ttl=2) # Her 2 saniyede bir Firebase'den veri çek
+# SADECE anlık veriyi çekmek için, ttl'i olan ayrı bir fonksiyon
+@st.cache_data(ttl=2) 
 def get_live_data(_ref):
     """Veritabanından anlık veriyi çeker."""
-    if _ref is None:
-        return {}
+    if _ref is None: return {}
     try:
         return _ref.get() or {}
     except Exception as e:
         st.warning(f"Veri çekilirken hata oluştu: {e}")
         return {}
+
+# SADECE tank listesini almak için, ttl'i olmayan ayrı bir fonksiyon
+@st.cache_data
+def get_available_tanks(_ref):
+    """Veritabanından mevcut tüm tankların listesini bir kez çeker."""
+    if _ref is None: return []
+    try:
+        data = _ref.get() or {}
+        return sorted(data.keys())
+    except Exception as e:
+        st.warning(f"Tank listesi çekilirken hata oluştu: {e}")
+        return []
 
 # --- STREAMLIT ARAYÜZÜ ---
 st.title("🚢 Gemi Operasyonları Canlı Takip Paneli")
@@ -101,23 +113,18 @@ st.title("🚢 Gemi Operasyonları Canlı Takip Paneli")
 # Session state'i başlat
 if 'selected_tanks' not in st.session_state:
     st.session_state.selected_tanks = []
-if 'placeholders' not in st.session_state:
-    st.session_state.placeholders = {}
 
 ref = init_firebase()
 status_placeholder = st.empty()
-all_tanks_data = get_live_data(ref)
+main_container = st.container()
 
-# Veri varsa tank seçimi kutusunu göster (döngünün dışında, sadece bir kez)
-if all_tanks_data:
-    sorted_tanks = sorted(
-        all_tanks_data.keys(),
-        key=lambda k: all_tanks_data[k].get('updated_at', ''),
-        reverse=True
-    )
+# Veri varsa tank seçimi kutusunu GÖSTER (DÖNGÜNÜN DIŞINDA)
+# Bu kutunun seçenekleri artık sayfa yenilenene kadar değişmeyecek, bu da takılmayı önler.
+available_tanks = get_available_tanks(ref)
+if available_tanks:
     st.session_state.selected_tanks = st.multiselect(
         "İzlemek istediğiniz tankları seçiniz:",
-        options=sorted_tanks,
+        options=available_tanks,
         default=st.session_state.selected_tanks
     )
 
@@ -125,11 +132,10 @@ if all_tanks_data:
 while True:
     all_tanks_data = get_live_data(ref)
     tanks_to_display = st.session_state.selected_tanks
-    placeholders = st.session_state.placeholders
-
+    
     # Durum mesajı
     if not ref:
-        status_placeholder.error("Firebase bağlantısı kurulamadı. Lütfen Streamlit Cloud 'Secrets' ayarlarını kontrol edin.")
+         status_placeholder.error("Firebase bağlantısı kurulamadı. Lütfen Streamlit Cloud 'Secrets' ayarlarını kontrol edin.")
     elif not all_tanks_data:
         status_placeholder.warning("Veri bekleniyor... Tarayıcıda Bookmarklet'in çalıştığından emin olun.")
     elif not tanks_to_display:
@@ -137,37 +143,25 @@ while True:
     else:
         status_placeholder.success(f"{len(tanks_to_display)} adet tank izleniyor. (Son Güncelleme: {datetime.now(timezone(timedelta(hours=3))).strftime('%H:%M:%S')})")
 
-    # Placeholder'ları yönet: Seçilmeyenleri sil, yenileri ekle
-    current_selection_set = set(tanks_to_display)
-    previous_placeholder_set = set(placeholders.keys())
-
-    for tank_no in previous_placeholder_set - current_selection_set:
-        placeholders[tank_no].empty()
-        del placeholders[tank_no]
-    
-    # Sıralama için geçici bir liste oluştur
-    display_list = []
-    if all_tanks_data:
-        for tank_no in tanks_to_display:
-            data = all_tanks_data.get(tank_no, {})
-            gov = data.get('gov', 0)
-            rate = data.get('rate', 0)
-            vem = VEM_DATA.get(tank_no, 0)
-            kalan_saat = ((vem - gov) / rate) if rate > 0 and vem > gov else float('inf')
-            display_list.append({'tank_no': tank_no, 'data': data, 'kalan_saat': kalan_saat})
-    
-    display_list.sort(key=lambda x: x['kalan_saat'])
-
-    # Mevcut tüm tankların placeholder'larını güncel verilerle yeniden çiz
-    for item in display_list:
-        tank_no = item['tank_no']
+    # Kartları ana konteynerin içinde, her seferinde sıfırdan çiz
+    with main_container:
+        main_container.empty() # Bir önceki çizimi tamamen temizle
         
-        # Eğer placeholder yoksa, bu döngüde oluştur
-        if tank_no not in placeholders:
-            placeholders[tank_no] = st.empty()
+        # Sıralama için geçici bir liste oluştur
+        display_list = []
+        if all_tanks_data:
+            for tank_no in tanks_to_display:
+                data = all_tanks_data.get(tank_no, {})
+                gov = data.get('gov', 0)
+                rate = data.get('rate', 0)
+                vem = VEM_DATA.get(tank_no, 0)
+                kalan_saat = ((vem - gov) / rate) if rate > 0 and vem > gov else float('inf')
+                display_list.append({'tank_no': tank_no, 'data': data, 'kalan_saat': kalan_saat})
+        
+        display_list.sort(key=lambda x: x['kalan_saat'])
 
-        # Kartı, o tanka özel olan placeholder'ın içine çiz
-        with placeholders[tank_no].container(border=True):
+        for item in display_list:
+            tank_no = item['tank_no']
             data = item['data']
             kalan_saat = item['kalan_saat']
             
@@ -188,20 +182,22 @@ while True:
                 kalan_saat_int, kalan_dakika_int = int(kalan_saat), int((kalan_saat * 60) % 60)
                 kalan_sure_str = f"{kalan_saat_int} sa {kalan_dakika_int} dk"
 
-            col1, col2, col3, col4 = st.columns(4)
-            title = f"T{tank_no}"
-            if product_name != 'Bilinmiyor': title += f" / {product_name}"
-            col1.markdown(f"<h3>{title}</h3>", unsafe_allow_html=True)
-            
-            col2.metric(label="Tahmini Bitiş Saati", value=tahmini_bitis_str)
-            col3.metric(label="Kalan Süre", value=kalan_sure_str)
-            col4.metric(label="Rate (m³/h)", value=f"{rate:.3f}")
+            # Arayüzü çizdirme
+            with st.container(border=True):
+                col1, col2, col3, col4 = st.columns(4)
+                title = f"T{tank_no}"
+                if product_name != 'Bilinmiyor': title += f" / {product_name}"
+                col1.markdown(f"<h3>{title}</h3>", unsafe_allow_html=True)
+                
+                col2.metric(label="Tahmini Bitiş Saati", value=tahmini_bitis_str)
+                col3.metric(label="Kalan Süre", value=kalan_sure_str)
+                col4.metric(label="Rate (m³/h)", value=f"{rate:.3f}")
 
-            p_col, d_col = st.columns([2, 1])
-            p_col.progress(min(int(progress_yuzde), 100), text=f"{progress_yuzde:.2f}%")
-            
-            detail_html = f"""<div style='font-size: 1.1rem; text-align: center;'><b>Vem:</b> {vem:,.3f} m³ | <b>GOV:</b> {gov:,.3f} m³ | <b>Kalan:</b> {kalan_hacim:,.3f} m³</div>""".replace(",", "X").replace(".", ",").replace("X", ".")
-            d_col.markdown(detail_html, unsafe_allow_html=True)
+                p_col, d_col = st.columns([2, 1])
+                p_col.progress(min(int(progress_yuzde), 100), text=f"{progress_yuzde:.2f}%")
+                
+                detail_html = f"""<div style='font-size: 1.1rem; text-align: center;'><b>Vem:</b> {vem:,.3f} m³ | <b>GOV:</b> {gov:,.3f} m³ | <b>Kalan:</b> {kalan_hacim:,.3f} m³</div>""".replace(",", "X").replace(".", ",").replace("X", ".")
+                d_col.markdown(detail_html, unsafe_allow_html=True)
 
     time.sleep(2)
 
