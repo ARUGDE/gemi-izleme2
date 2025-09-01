@@ -17,7 +17,7 @@ st.set_page_config(
 # YAPILANDIRMA: İZLENECEK TANKLAR
 # -------------------------------------------------------------------
 # Hangi tankların izleneceğini değiştirmek için bu listeyi güncelleyin
-TANKS_TO_MONITOR = ['069', '140', '150', '312', '314']
+TANKS_TO_MONITOR = ['069', '061', '073', '069', '153', '056', '065', '140', '150', '312', '314']
 # -------------------------------------------------------------------
 
 # --- STATİK VERİLER (VEM_DATA) ---
@@ -221,7 +221,7 @@ def render_tank_card(metrics: Dict, container_key: str) -> None:
 
 # --- ANA UYGULAMA ---
 def main():
-    st.title("🚢 Gemi Operasyonları Canlı Takip Paneli")
+    # st.title("🚢 Gemi Operasyonları Canlı Takip Paneli")
     
     # Firebase bağlantısını başlat
     ref = init_firebase()
