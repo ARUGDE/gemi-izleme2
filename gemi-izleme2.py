@@ -4,22 +4,23 @@ import firebase_admin
 from firebase_admin import credentials, db
 import json
 from typing import Dict, List, Optional
+import time
 
-# --- PAGE CONFIGURATION ---
+# --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(
-    page_title="Gemi Operasyon Takibi", 
+    page_title="Gemi Operasyon Takibi",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed" # Kenar çubuğu varsayılan olarak kapalı
 )
 
 # -------------------------------------------------------------------
-# CONFIGURATION: TANKS TO MONITOR
+# YAPILANDIRMA: İZLENECEK TANKLAR
 # -------------------------------------------------------------------
-# Update this list to change which tanks are monitored
+# Hangi tankların izleneceğini değiştirmek için bu listeyi güncelleyin
 TANKS_TO_MONITOR = ['072', '312', '314']
 # -------------------------------------------------------------------
 
-# --- STATIC DATA (VEM_DATA) ---
+# --- STATİK VERİLER (VEM_DATA) ---
 VEM_DATA = {
     "001": 391.791, "002": 389.295, "003": 392.011, "004": 391.557, "005": 389.851, 
     "006": 391.441, "007": 391.493, "008": 390.552, "009": 389.794, "010": 178.753, 
@@ -67,30 +68,30 @@ VEM_DATA = {
     "313": 2584.728,"314": 4047.136,"315": 4046.604,"316": 817.511
 }
 
-# --- HELPER FUNCTIONS ---
+# --- YARDIMCI FONKSİYONLAR ---
 @st.cache_resource
 def init_firebase():
-    """Initialize Firebase connection with caching."""
+    """Firebase bağlantısını önbelleğe alarak başlatır."""
     try:
         cred_dict = st.secrets["firebase_credentials"]
         db_url = "https://gemi-izleme-default-rtdb.europe-west1.firebasedatabase.app"
         
-        with open("temp_credentials.json", "w") as f:
-            json.dump(dict(cred_dict), f)
-        
+        # Geçici bir kimlik bilgisi dosyası oluşturmak yerine sözlüğü doğrudan kullanabiliriz.
+        # Bu, dosya sistemi izinleriyle ilgili olası sorunları önler.
+        cred = credentials.Certificate(dict(cred_dict))
+
         if not firebase_admin._apps:
-            cred = credentials.Certificate("temp_credentials.json")
             firebase_admin.initialize_app(cred, {'databaseURL': db_url})
         
         return db.reference('live_tanks')
     
     except Exception as e:
-        st.error(f"Firebase connection failed: {e}")
+        st.error(f"Firebase bağlantısı başarısız oldu: {e}")
         return None
 
-@st.cache_data(ttl=3)  # Cache for 3 seconds
+@st.cache_data(ttl=3)  # Veriyi 3 saniye önbellekte tut
 def get_live_data(_ref) -> Dict:
-    """Fetch live data from Firebase with caching."""
+    """Firebase'den canlı veriyi önbelleğe alarak çeker."""
     if _ref is None:
         return {}
     
@@ -98,30 +99,30 @@ def get_live_data(_ref) -> Dict:
         data = _ref.get()
         return data or {}
     except Exception as e:
-        st.warning(f"Error fetching data: {e}")
+        st.warning(f"Veri alınırken hata oluştu: {e}")
         return {}
 
 def calculate_tank_metrics(tank_no: str, data: Dict) -> Dict:
-    """Calculate all metrics for a single tank."""
+    """Tek bir tank için tüm metrikleri hesaplar."""
     gov = data.get('gov', 0)
     rate = data.get('rate', 0)
     vem = VEM_DATA.get(tank_no, 0)
     product_name = data.get('product', 'Bilinmiyor')
     
-    # Calculate remaining volume and progress
+    # Kalan hacim ve ilerleme yüzdesini hesapla
     kalan_hacim = max(vem - gov, 0)
     progress_yuzde = (gov / vem) * 100 if vem > 0 else 0
     
-    # Calculate remaining time
+    # Kalan süreyi saat cinsinden hesapla
     kalan_saat = float('inf')
     if rate > 0 and vem > gov:
         kalan_saat = (vem - gov) / rate
     
-    # Calculate estimated completion time
+    # Tahmini bitiş zamanını ve kritik durum kontrolünü yap
     timezone_tr = timezone(timedelta(hours=3))
     tahmini_bitis_str = "Hesaplanamadı"
     kalan_sure_str = "N/A"
-    is_critical = False  # For blinking red warning
+    is_critical = False  # Kırmızı yanıp sönme uyarısı için
     
     if kalan_saat != float('inf'):
         now_tr = datetime.now(timezone_tr)
@@ -132,7 +133,7 @@ def calculate_tank_metrics(tank_no: str, data: Dict) -> Dict:
         kalan_dakika_int = int((kalan_saat * 60) % 60)
         kalan_sure_str = f"{kalan_saat_int} sa {kalan_dakika_int} dk"
         
-        # Check if less than 15 minutes remaining (0.25 hours)
+        # 15 dakikadan az kalıp kalmadığını kontrol et (0.25 saat)
         is_critical = kalan_saat <= 0.25
     
     return {
@@ -150,7 +151,7 @@ def calculate_tank_metrics(tank_no: str, data: Dict) -> Dict:
     }
 
 def get_blinking_style(is_critical: bool) -> str:
-    """Return CSS style for blinking red effect when critical."""
+    """Kritik durumlar için yanıp sönen kırmızı efekti için CSS stili döndürür."""
     if is_critical:
         return """
         <style>
@@ -170,14 +171,14 @@ def get_blinking_style(is_critical: bool) -> str:
     return ""
 
 def render_tank_card(metrics: Dict, container_key: str) -> None:
-    """Render a single tank monitoring card with unique container."""
+    """Tek bir tank izleme kartını oluşturur."""
     
-    # Add blinking CSS if critical
+    # Kritik durumdaysa yanıp sönme CSS'ini ekle
     if metrics['is_critical']:
         st.markdown(get_blinking_style(True), unsafe_allow_html=True)
     
     with st.container(border=True, key=f"tank_{container_key}"):
-        # Header
+        # Başlık Bölümü
         col1, col2, col3, col4 = st.columns(4)
         
         title = f"T{metrics['tank_no']}"
@@ -187,7 +188,7 @@ def render_tank_card(metrics: Dict, container_key: str) -> None:
         col1.markdown(f"<h3>{title}</h3>", unsafe_allow_html=True)
         col2.metric("Tahmini Bitiş Saati", metrics['tahmini_bitis_str'])
         
-        # Apply critical styling to remaining time if needed
+        # Kalan süre kritik ise özel stil uygula
         if metrics['is_critical'] and metrics['kalan_sure_str'] != "N/A":
             col3.markdown(
                 f"<div class='critical-time'>⚠️ {metrics['kalan_sure_str']}</div>", 
@@ -198,13 +199,13 @@ def render_tank_card(metrics: Dict, container_key: str) -> None:
         
         col4.metric("Rate (m³/h)", f"{metrics['rate']:.3f}")
         
-        # Progress bar and details
+        # İlerleme çubuğu ve detaylar
         p_col, d_col = st.columns([2, 1])
         
         progress_val = min(int(metrics['progress_yuzde']), 100)
         p_col.progress(progress_val, text=f"{metrics['progress_yuzde']:.2f}%")
         
-        # Format numbers with Turkish locale style
+        # Sayıları Türkçe yerel ayarlarına uygun formatla (binlik ayıracı nokta, ondalık ayıracı virgül)
         vem_str = f"{metrics['vem']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
         gov_str = f"{metrics['gov']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
         kalan_str = f"{metrics['kalan_hacim']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -218,110 +219,58 @@ def render_tank_card(metrics: Dict, container_key: str) -> None:
         """
         d_col.markdown(detail_html, unsafe_allow_html=True)
 
-def render_sidebar(all_tanks_data: Dict) -> None:
-    """Render sidebar with summary information."""
-    with st.sidebar:
-        st.header("📊 Özet Bilgiler")
-        
-        # Connection status
-        if not all_tanks_data:
-            st.error("Veri yok")
-        else:
-            st.success(f"✅ {len(all_tanks_data)} tank verisi")
-        
-        # Tank summary
-        st.subheader("İzlenen Tanklar")
-        for tank_no in TANKS_TO_MONITOR:
-            if tank_no in all_tanks_data:
-                data = all_tanks_data[tank_no]
-                rate = data.get('rate', 0)
-                status = "🟢" if rate > 0 else "🟡"
-                st.write(f"{status} Tank {tank_no}")
-            else:
-                st.write(f"🔴 Tank {tank_no}")
-        
-        # Auto-refresh info
-        st.divider()
-        st.info("🔄 Otomatik yenileme: 3 saniye")
-
-# --- MAIN APPLICATION ---
+# --- ANA UYGULAMA ---
 def main():
     st.title("🚢 Gemi Operasyonları Canlı Takip Paneli")
     
-    # Initialize Firebase
+    # Firebase bağlantısını başlat
     ref = init_firebase()
     
-    # Status placeholder
-    status_placeholder = st.empty()
+    # Durum mesajları için iki sütun oluştur. 
+    # Bu, sayfanın atlamasını (flicker) engeller.
+    status_col1, status_col2 = st.columns([4, 1])
     
-    # Fetch data
+    # Veriyi çek
     all_tanks_data = get_live_data(ref)
     
-    # Update status
+    # Durum mesajını güncelle
     if not ref:
-        status_placeholder.error(
+        status_col1.error(
             "Firebase bağlantısı kurulamadı. "
             "Lütfen Streamlit Cloud 'Secrets' ayarlarını kontrol edin."
         )
     elif not all_tanks_data:
-        status_placeholder.warning(
+        status_col1.warning(
             "Veri bekleniyor... Lokaldeki 'itici.py' script'inin "
             "çalıştığından emin olun."
         )
     else:
+        # Başarılı durumda, ana mesajı soldaki kolona, saati sağdaki kolona yaz.
+        # Böylece sadece saat güncellenir ve sayfa atlamaz.
+        status_col1.success(
+            f"{len(TANKS_TO_MONITOR)} adet tank izleniyor."
+        )
         timezone_tr = timezone(timedelta(hours=3))
         current_time = datetime.now(timezone_tr).strftime('%H:%M:%S')
-        status_placeholder.success(
-            f"{len(TANKS_TO_MONITOR)} adet tank izleniyor. "
-            f"(Son Güncelleme: {current_time})"
-        )
-    
-    # Render sidebar
-    render_sidebar(all_tanks_data)
-    
-    # Calculate metrics for all tanks
+        status_col2.write(f"**Son Güncelleme:** {current_time}")
+
+    st.divider()
+
+    # Tüm tanklar için metrikleri hesapla
     tank_metrics = []
     for tank_no in TANKS_TO_MONITOR:
         data = all_tanks_data.get(tank_no, {})
         metrics = calculate_tank_metrics(tank_no, data)
         tank_metrics.append(metrics)
     
-    # Sort by remaining time (lowest first - kritik olanlar önce)
+    # Kalan süreye göre sırala (en az kalan en üstte)
     tank_metrics.sort(key=lambda x: x['kalan_saat'])
     
-    # Summary statistics
-    if tank_metrics:
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            active_tanks = sum(1 for m in tank_metrics if m['rate'] > 0)
-            st.metric("Aktif Tanklar", active_tanks)
-        
-        with col2:
-            total_remaining = sum(m['kalan_hacim'] for m in tank_metrics)
-            st.metric("Toplam Kalan", f"{total_remaining:,.1f} m³")
-        
-        with col3:
-            critical_tanks = sum(1 for m in tank_metrics if m['is_critical'])
-            if critical_tanks > 0:
-                st.markdown(
-                    f"<div style='background-color: #ff4444; color: white; padding: 10px; "
-                    f"border-radius: 5px; text-align: center; font-weight: bold;'>"
-                    f"⚠️ KRİTİK: {critical_tanks} TANK</div>", 
-                    unsafe_allow_html=True
-                )
-            else:
-                avg_rate = sum(m['rate'] for m in tank_metrics) / len(tank_metrics) if tank_metrics else 0
-                st.metric("Ortalama Rate", f"{avg_rate:.3f} m³/h")
-    
-    st.divider()
-    
-    # Render tank cards (sorted by remaining time)
+    # Tank kartlarını ekrana çizdir
     for i, metrics in enumerate(tank_metrics):
         render_tank_card(metrics, f"{metrics['tank_no']}_{i}")
     
-    # Auto-refresh using rerun
-    import time
+    # Sayfayı 3 saniyede bir otomatik olarak yenile
     time.sleep(3)
     st.rerun()
 
