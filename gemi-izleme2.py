@@ -102,7 +102,13 @@ def get_available_tanks(_ref):
     if _ref is None: return []
     try:
         data = _ref.get() or {}
-        return sorted(data.keys())
+        # En son güncellenen tankların en üstte görünmesi için sırala
+        sorted_tanks = sorted(
+            data.keys(),
+            key=lambda k: data[k].get('updated_at', '1970-01-01T00:00:00.000Z'),
+            reverse=True
+        )
+        return sorted_tanks
     except Exception as e:
         st.warning(f"Tank listesi çekilirken hata oluştu: {e}")
         return []
