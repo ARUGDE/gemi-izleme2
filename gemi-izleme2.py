@@ -134,7 +134,7 @@ def calculate_tank_metrics(tank_no: str, data: Dict) -> Dict:
         kalan_sure_str = f"{kalan_saat_int} sa {kalan_dakika_int} dk"
         
         # 15 dakikadan az kalıp kalmadığını kontrol et (0.25 saat)
-        is_critical = kalan_saat <= 0.25
+        is_critical = kalan_saat <= 20.25
     
     return {
         'tank_no': tank_no,
