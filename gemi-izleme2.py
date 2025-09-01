@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 import time
 import firebase_admin
 from firebase_admin import credentials, db
+import json
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="Gemi Operasyon Takibi", layout="wide")
@@ -55,21 +56,32 @@ VEM_DATA = {
     "313": 2584.728,"314": 4047.136,"315": 4046.604,"316": 817.511
 }
 
-# --- FIREBASE BAĞLANTISI ---
+# --- FIREBASE BAĞLANTISI (NİHAİ ve SAĞLAM YÖNTEM) ---
 @st.cache_resource
 def init_firebase():
-    """Firebase bağlantısını başlatır ve cache'ler."""
+    """
+    Streamlit Secrets'tan alınan bilgileri geçici bir dosyaya yazarak
+    Firebase bağlantısını en sağlam şekilde kurar.
+    """
     try:
+        # 1. Adım: Streamlit'in Secrets'ından credential bilgilerini al
         cred_dict = st.secrets["firebase_credentials"]
         db_url = "https://gemi-izleme-default-rtdb.europe-west1.firebasedatabase.app"
+        
+        # 2. Adım: Bu bilgileri geçici bir JSON dosyasına yaz
+        with open("temp_credentials.json", "w") as f:
+            json.dump(dict(cred_dict), f)
+            
+        # 3. Adım: Firebase'i bu dosyanın yoluyla başlat
         if not firebase_admin._apps:
-            cred = credentials.Certificate(cred_dict)
+            # Dosya yolunu vererek başlatmak, en güvenilir yöntemdir
+            cred = credentials.Certificate("temp_credentials.json")
             firebase_admin.initialize_app(cred, {'databaseURL': db_url})
+            
         return db.reference('live_tanks')
+
     except Exception as e:
-        # Bu hata, uygulama ilk başladığında ve Secrets henüz yüklenmediğinde normaldir.
-        # Streamlit bunu otomatik olarak yeniden deneyerek çözer.
-        st.warning(f"Firebase başlatılıyor... Hata: {e}")
+        st.error(f"Firebase bağlantısı kurulamadı. Secrets ayarlarınızı kontrol edin. Hata: {e}")
         return None
 
 @st.cache_data(ttl=2) # Her 2 saniyede bir Firebase'den veri çek
@@ -96,7 +108,6 @@ status_placeholder = st.empty()
 # Veri varsa tank seçimi kutusunu göster
 all_tanks_data = get_live_data(ref)
 if all_tanks_data:
-    # Seçenekleri, en son güncellenen tank en üstte olacak şekilde sırala
     sorted_tanks = sorted(
         all_tanks_data.keys(),
         key=lambda k: all_tanks_data[k].get('updated_at', ''),
@@ -154,7 +165,7 @@ while True:
                 col1, col2, col3, col4 = st.columns(4)
                 
                 title = f"T{tank_no}"
-                if product_name != 'Bilinmiyor':
+                if product_name != 'Bilinmiyor' and product_name != 'Veri Bekleniyor...':
                     title += f" / {product_name}"
                 col1.markdown(f"<h3>{title}</h3>", unsafe_allow_html=True)
                 
