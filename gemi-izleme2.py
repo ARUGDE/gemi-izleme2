@@ -262,4 +262,3 @@ with placeholder_data.container():
 
 # 2 saniye sonra sayfayı yenile - Otomatik güncelleme
 time.sleep(2)
-st.rerun()
