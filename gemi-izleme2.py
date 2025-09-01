@@ -67,7 +67,9 @@ def init_firebase():
             firebase_admin.initialize_app(cred, {'databaseURL': db_url})
         return db.reference('live_tanks')
     except Exception as e:
-        st.error(f"Firebase bağlantısı kurulamadı: {e}")
+        # Bu hata, uygulama ilk başladığında ve Secrets henüz yüklenmediğinde normaldir.
+        # Streamlit bunu otomatik olarak yeniden deneyerek çözer.
+        st.warning(f"Firebase başlatılıyor... Hata: {e}")
         return None
 
 @st.cache_data(ttl=2) # Her 2 saniyede bir Firebase'den veri çek
@@ -113,7 +115,9 @@ while True:
     tanks_to_display = st.session_state.selected_tanks
     
     # Durum mesajı
-    if not all_tanks_data:
+    if not ref:
+         status_placeholder.error("Firebase bağlantısı kurulamadı. Lütfen Streamlit Cloud 'Secrets' ayarlarını kontrol edin.")
+    elif not all_tanks_data:
         status_placeholder.warning("Veri bekleniyor... Tarayıcıda Bookmarklet'in çalıştığından emin olun.")
     elif not tanks_to_display:
         status_placeholder.info("Lütfen yukarıdan izlemek istediğiniz bir veya daha fazla tank seçin.")
@@ -125,7 +129,7 @@ while True:
         
         for tank_no in tanks_to_display:
             data = all_tanks_data.get(tank_no, {})
-            product_name = data.get('product', 'Bilinmiyor') # Ürün adı eklenecek
+            product_name = data.get('product', 'Bilinmiyor') 
             gov = data.get('gov', 0)
             rate = data.get('rate', 0)
             vem = VEM_DATA.get(tank_no, 0)
@@ -148,7 +152,7 @@ while True:
             # Arayüzü çizdirme
             with st.container(border=True):
                 col1, col2, col3, col4 = st.columns(4)
-                # Ürün adını başlığa ekle (eğer varsa)
+                
                 title = f"T{tank_no}"
                 if product_name != 'Bilinmiyor':
                     title += f" / {product_name}"
@@ -170,4 +174,5 @@ while True:
                 """.replace(",", "X").replace(".", ",").replace("X", ".")
                 d_col.markdown(detail_html, unsafe_allow_html=True)
 
-    time.sleep(2) # Arayüzü 2 saniyede bir yenile
+    time.sleep(2)
+
