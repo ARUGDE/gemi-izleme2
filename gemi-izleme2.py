@@ -66,7 +66,7 @@ def init_firebase():
     try:
         # 1. Adım: Streamlit'in Secrets'ından credential bilgilerini al
         cred_dict = st.secrets["firebase_credentials"]
-        db_url = st.secrets["firebase_url"]
+        db_url = st.secrets("firebase_url")
         
         # 2. Adım: Bu bilgileri geçici bir JSON dosyasına yaz
         with open("temp_credentials.json", "w") as f:
