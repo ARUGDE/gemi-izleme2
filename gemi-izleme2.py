@@ -260,8 +260,8 @@ def main():
                 now_utc = datetime.now(timezone.utc)
                 time_diff = (now_utc - most_recent).total_seconds()
                 
-                # 5 dakika (300 saniye) tolerans
-                if time_diff > 300:
+                # 0.25 dakika (15 saniye) tolerans
+                if time_diff > 15:
                     is_data_stale = True
                 
                 # Türkiye saatine çevir
