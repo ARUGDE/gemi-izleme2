@@ -155,20 +155,32 @@ def get_blinking_style(is_critical: bool) -> str:
     if is_critical:
         return """
         <style>
-        @keyframes blink {
-            0% { background-color: #ff4444; color: white; }
-            50% { background-color: #ff8888; color: white; }
-            100% { background-color: #ff4444; color: white; }
+        @keyframes flashing-red {
+            0%   { background-color: #ff4b4b; }
+            50%  { background-color: #a02c2c; }
+            100% { background-color: #ff4b4b; }
         }
-        .critical-time {
-            animation: blink 1s infinite;
-            padding: 5px;
-            border-radius: 5px;
+        .flash-alert {
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            animation-name: flashing-red;
+            animation-duration: 1.5s;
+            animation-iteration-count: infinite;
+            text-align: center;
+        }
+        .flash-alert .label {
+            font-size: 0.9rem;
+            color: white;
+        }
+        .flash-alert .value {
+            font-size: 1.5rem;
             font-weight: bold;
+            color: white;
         }
         </style>
         """
     return ""
+
 
 def render_tank_card(metrics: Dict, container_key: str) -> None:
     """Tek bir tank izleme kartını oluşturur."""
@@ -191,7 +203,7 @@ def render_tank_card(metrics: Dict, container_key: str) -> None:
         # Kalan süre kritik ise özel stil uygula
         if metrics['is_critical'] and metrics['kalan_sure_str'] != "N/A":
             col3.markdown(
-                f"<div class='critical-time'>⚠️ {metrics['kalan_sure_str']}</div>", 
+                f"<div class='flash-alert'><span class='value'>⚠️ {metrics['kalan_sure_str']}</span></div>",  
                 unsafe_allow_html=True
             )
         else:
