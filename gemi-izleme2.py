@@ -160,22 +160,32 @@ def get_blinking_style(is_critical: bool) -> str:
             50%  { background-color: #a02c2c; }
             100% { background-color: #ff4b4b; }
         }
-        .flash-alert {
+        
+        /* st.metric bileşenini taklit eden yanıp sönen konteyner */
+        .flash-metric-container {
             border-radius: 0.5rem;
-            padding: 0.75rem 1rem;
+            padding: 0.5rem 0.75rem; /* Dikey padding azaltıldı */
             animation-name: flashing-red;
             animation-duration: 1.5s;
             animation-iteration-count: infinite;
             text-align: left;
+            border: 1px solid transparent; /* Kenarlık hizalaması için */
         }
-        .flash-alert .label {
-            font-size: 2.5rem;
-            color: white;
+        
+        /* "Kalan Süre" etiketi için stil */
+        .flash-metric-container .metric-label {
+            font-size: 0.875rem; /* Daha küçük etiket fontu */
+            color: #f0f2f6;      /* Streamlit'in etiket rengine yakın */
+            display: block;
+            margin-bottom: -0.25rem; /* Değer ile aralığı azalt */
         }
-        .flash-alert .value {
+
+        /* Zaman değeri için stil */
+        .flash-metric-container .metric-value {
             font-size: 1.75rem;
             font-weight: bold;
             color: white;
+            line-height: 1.2;
         }
         </style>
         """
@@ -200,13 +210,20 @@ def render_tank_card(metrics: Dict, container_key: str) -> None:
         col1.markdown(f"<h3>{title}</h3>", unsafe_allow_html=True)
         col2.metric("Tahmini Bitiş Saati", metrics['tahmini_bitis_str'])
         
-        # Kalan süre kritik ise özel stil uygula
+        # --- DEĞİŞİKLİK BURADA ---
+        # Kalan süre kritik ise, etiketi de içeren özel HTML yapısını kullan
         if metrics['is_critical'] and metrics['kalan_sure_str'] != "N/A":
             col3.markdown(
-                f"<div class='flash-alert'><span class='value'>{metrics['kalan_sure_str']}</span></div>",  # ⚠️
+                f"""
+                <div class='flash-metric-container'>
+                    <div class='metric-label'>Kalan Süre</div>
+                    <div class='metric-value'>{metrics['kalan_sure_str']}</div>
+                </div>
+                """,
                 unsafe_allow_html=True
             )
         else:
+            # Kritik değilse, standart st.metric bileşenini kullanmaya devam et
             col3.metric("Kalan Süre", metrics['kalan_sure_str'])
         
         col4.metric("Rate (m³/h)", f"{metrics['rate']:.3f}")
