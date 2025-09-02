@@ -77,9 +77,9 @@ def check_password():
     # Kullanıcı girişi için bir form oluştur. Bu, her tuşa basıldığında sayfanın
     # yeniden yüklenmesini engeller.
     with st.form("password_form"):
-        st.title("🚢 Gemi Operasyon Takibi")
-        st.write("Lütfen devam etmek için şifreyi girin.")
-        password = st.text_input("Şifre", type="password")
+        # st.title("🚢 Gemi Operasyon Takibi")
+        # st.write("Uygulamayı Görüntülemek İçin Şifre Girin")
+        password = st.text_input("Uygulamayı Görüntülemek İçin Şifre Girin", type="password")
         submitted = st.form_submit_button("Giriş Yap")
 
         if submitted:
