@@ -5,12 +5,13 @@ from firebase_admin import credentials, db
 import json
 from typing import Dict, List, Optional
 import time
+import requests # --- YENİ --- Bildirimler için eklendi
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(
     page_title="Gemi İzleme",
     layout="wide",
-    initial_sidebar_state="collapsed" # Kenar çubuğu varsayılan olarak kapalı
+    initial_sidebar_state="collapsed"
 )
 
 # -------------------------------------------------------------------
@@ -70,27 +71,21 @@ VEM_DATA = {
 # --- YENİ FONKSİYON: ŞİFRE KONTROLÜ ---
 def check_password():
     """Kullanıcı girişi için bir form gösterir ve şifreyi doğrular."""
-    # Eğer şifre zaten doğrulanmışsa ve session state'de saklanıyorsa, True döndür.
+    st.title("🚢 Gemi Operasyonları İzleme Paneli")
     if st.session_state.get("password_correct", False):
         return True
 
-    # Kullanıcı girişi için bir form oluştur
     with st.form("password_form"):
         password = st.text_input("Uygulamayı Görüntülemek İçin Şifre Girin", type="password")
         submitted = st.form_submit_button("Giriş Yap")
 
         if submitted:
-            # secrets.toml dosyasından doğru şifreyi al
             correct_password = st.secrets.get("APP_PASSWORD", "")
-            
-            # Girilen şifre ile doğru şifreyi karşılaştır
             if password == correct_password:
                 st.session_state["password_correct"] = True
-                st.rerun()  # Sayfayı yeniden yükle ve ana uygulamayı göster
+                st.rerun()
             else:
                 st.error("Girdiğiniz şifre hatalı.")
-    
-    # Şifre doğru değilse veya form gönderilmediyse False döndür.
     return False
 
 # --- YARDIMCI FONKSİYONLAR ---
@@ -108,7 +103,7 @@ def init_firebase():
         st.error(f"Firebase bağlantısı başarısız oldu: {e}")
         return None
 
-@st.cache_data(ttl=5)  # TTL'yi 5 saniyeye çıkardık (refresh süresiyle uyumlu)
+@st.cache_data(ttl=5)
 def get_live_data(_ref) -> Dict:
     """Firebase'den canlı veriyi önbelleğe alarak çeker."""
     if _ref is None: return {}
@@ -227,71 +222,103 @@ def render_tank_card(metrics: Dict, container_key: str) -> None:
         </div>"""
         d_col.markdown(detail_html, unsafe_allow_html=True)
 
+# --- YENİ --- TELEGRAM BİLDİRİM FONKSİYONU
+import requests
+
+def send_telegram_notification(tank_info: Dict):
+    """Doğrudan Telegram Bot API'sine istek atarak bildirim gönderir."""
+    try:
+        token = st.secrets["TELEGRAM_BOT_TOKEN"]
+        chat_id = st.secrets["TELEGRAM_CHAT_ID"]
+        
+        message = (
+            f"🚨 TANK UYARISI! 🚨\n\n"
+            f"Tank No: *{tank_info['tank_no']}*\n"
+            f"Ürün: {tank_info['product_name']}\n"
+            f"Kalan Süre: *{tank_info['kalan_sure_str']}*"
+        )
+        
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        
+        payload = {
+            'chat_id': chat_id,
+            'text': message,
+            'parse_mode': 'Markdown'
+        }
+        
+        response = requests.post(url, json=payload)
+        
+        if response.status_code == 200:
+            print(f"Tank {tank_info['tank_no']} için Telegram bildirimi başarıyla gönderildi.")
+            st.toast(f"Tank {tank_info['tank_no']} için Telegram bildirimi gönderildi!")
+            return True
+        else:
+            print(f"Telegram bildirimi gönderilemedi: {response.json()}")
+            return False
+            
+    except Exception as e:
+        st.error(f"Telegram bildirimi gönderilirken hata oluştu: {e}")
+        return False
+
+
 # --- ANA UYGULAMA ---
 def main():
     ref = init_firebase()
     status_col1, status_col2 = st.columns([4, 1])
     all_tanks_data = get_live_data(ref)
     
-    # Timestamp kontrolü - daha toleranslı
-    is_data_stale = False
+    is_data_stale = True # Varsayılan olarak eski kabul et
     last_update_str = "Bilinmiyor"
     
     if all_tanks_data and isinstance(all_tanks_data, dict):
-        try:
-            # Birden fazla tank'ın timestamp'ini kontrol et
-            timestamps = []
-            for tank_no, tank_data in all_tanks_data.items():
+        timestamps = []
+        for tank_data in all_tanks_data.values():
+            try:
                 if isinstance(tank_data, dict) and 'updated_at' in tank_data:
-                    try:
-                        timestamp_str = tank_data['updated_at']
-                        # Firebase'den gelen Z formatını düzgün parse et
-                        if timestamp_str.endswith('Z'):
-                            last_update_utc = datetime.fromisoformat(timestamp_str[:-1] + '+00:00')
-                        else:
-                            last_update_utc = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-                        timestamps.append(last_update_utc)
-                    except:
-                        continue
-            
-            if timestamps:
-                # En güncel timestamp'i kullan
-                most_recent = max(timestamps)
-                now_utc = datetime.now(timezone.utc)
-                time_diff = (now_utc - most_recent).total_seconds()
-                
-                # 0.25 dakika (15 saniye) tolerans
-                if time_diff > 15:
-                    is_data_stale = True
-                
-                # Türkiye saatine çevir
-                timezone_tr = timezone(timedelta(hours=3))
-                last_update_tr = most_recent.astimezone(timezone_tr)
-                last_update_str = last_update_tr.strftime('%H:%M:%S')
-                
-        except Exception:
-            # Herhangi bir hata durumunda veriyi kabul et
-            is_data_stale = False
+                    timestamp_str = tank_data['updated_at']
+                    last_update_utc = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                    timestamps.append(last_update_utc)
+            except (ValueError, TypeError):
+                continue
 
-    timezone_tr = timezone(timedelta(hours=3))
-    current_time_str = datetime.now(timezone_tr).strftime('%H:%M:%S')
+        if timestamps:
+            most_recent = max(timestamps)
+            now_utc = datetime.now(timezone.utc)
+            
+            if (now_utc - most_recent).total_seconds() <= 15:
+                is_data_stale = False
+            
+            timezone_tr = timezone(timedelta(hours=3))
+            last_update_tr = most_recent.astimezone(timezone_tr)
+            last_update_str = last_update_tr.strftime('%H:%M:%S')
 
     if not ref:
-        status_col1.error("Firebase bağlantısı kurulamadı. Lütfen Streamlit Cloud 'Secrets' ayarlarını kontrol edin.")
+        status_col1.error("Firebase bağlantısı kurulamadı.")
     elif not all_tanks_data:
-        status_col1.warning("Veri akışı durdu veya bekleniyor...")
+        status_col1.warning("Veri bekleniyor...")
     elif is_data_stale:
-        status_col1.warning(f"Veri güncellenmemiş olabilir. Son güncelleme: {last_update_str}")
+        status_col1.warning(f"Veri akışı durmuş olabilir. Son güncelleme: {last_update_str}")
     else:
         active_tanks = sum(1 for tank_no in TANKS_TO_MONITOR if tank_no in all_tanks_data)
-        status_col1.success(f"{len(TANKS_TO_MONITOR)}/{len(all_tanks_data)} adet tank izleniyor. Son güncelleme: {current_time_str}")
+        status_col1.success(f"Aktif İzlenen: {active_tanks}/{len(TANKS_TO_MONITOR)} | Toplam Aktif: {len(all_tanks_data)} | Son Veri: {last_update_str}")
 
-    if all_tanks_data and isinstance(all_tanks_data, dict):
+    if all_tanks_data and not is_data_stale and isinstance(all_tanks_data, dict):
+        if 'notified_tanks' not in st.session_state:
+            st.session_state.notified_tanks = {}
+
         tank_metrics = []
         for tank_no in TANKS_TO_MONITOR:
             data = all_tanks_data.get(tank_no, {})
             if not data: continue
+            
             metrics = calculate_tank_metrics(tank_no, data)
+            
+            if metrics['is_critical'] and tank_no not in st.session_state.notified_tanks:
+                send_telegram_notification(metrics)
+                st.session_state.notified_tanks[tank_no] = time.time()
+            elif not metrics['is_critical'] and tank_no in st.session_state.notified_tanks:
+                del st.session_state.notified_tanks[tank_no]
+
             tank_metrics.append(metrics)
         
         tank_metrics.sort(key=lambda x: x['kalan_saat'])
