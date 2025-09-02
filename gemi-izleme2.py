@@ -203,12 +203,8 @@ def render_tank_card(metrics: Dict, container_key: str) -> None:
         # Kalan süre kritik ise özel stil uygula
         if metrics['is_critical'] and metrics['kalan_sure_str'] != "N/A":
             col3.markdown(
-                    f"""
-                        <div class="flash-alert">
-                        <div class="label">Kalan Süre</div>
-                        <div class="value">⚠️ {metrics['kalan_sure_str']}</div>
-                        </div>
-                        """,
+                f"<div class='flash-alert'><span class='value'>{metrics['kalan_sure_str']}</span></div>",  # ⚠️
+                unsafe_allow_html=True
             )
         else:
             col3.metric("Kalan Süre", metrics['kalan_sure_str'])
