@@ -210,7 +210,6 @@ def render_tank_card(metrics: Dict, container_key: str) -> None:
         col1.markdown(f"<h3>{title}</h3>", unsafe_allow_html=True)
         col2.metric("Tahmini Bitiş Saati", metrics['tahmini_bitis_str'])
         
-        # --- DEĞİŞİKLİK BURADA ---
         # Kalan süre kritik ise, etiketi de içeren özel HTML yapısını kullan
         if metrics['is_critical'] and metrics['kalan_sure_str'] != "N/A":
             col3.markdown(
@@ -228,13 +227,46 @@ def render_tank_card(metrics: Dict, container_key: str) -> None:
         
         col4.metric("Rate (m³/h)", f"{metrics['rate']:.3f}")
         
-        # İlerleme çubuğu ve detaylar
+        # --- DEĞİŞİKLİK BURADA: İLERLEME ÇUBUĞU ---
         p_col, d_col = st.columns([2, 1])
         
-        progress_val = min(int(metrics['progress_yuzde']), 100)
-        p_col.progress(progress_val, text=f"{metrics['progress_yuzde']:.2f}%")
+        # Standart progress bar yerine özel HTML progress bar oluştur
+        percentage = metrics['progress_yuzde']
         
-        # Sayıları Türkçe yerel ayarlarına uygun formatla (binlik ayıracı nokta, ondalık ayıracı virgül)
+        # Renkleri yüzdeye göre belirle
+        color = "#198754"  # Yeşil (Varsayılan)
+        if percentage >= 90:
+            color = "#dc3545"  # Kırmızı
+        elif percentage >= 75:
+            color = "#ffc107"  # Sarı
+        
+        # Çubuğun %100'ü geçmemesini sağla
+        bar_width_percentage = min(percentage, 100)
+        
+        # HTML ve CSS stillerini oluştur
+        bar_style = (
+            f"width: {bar_width_percentage}%; "
+            f"background-color: {color}; "
+            "height: 24px; "
+            "border-radius: 5px; "
+            "display: flex; "
+            "align-items: center; "
+            "justify-content: center; "
+            "color: white; "
+            "font-weight: bold;"
+        )
+        container_style = "width: 100%; background-color: #e9ecef; border-radius: 5px;"
+        
+        html_code = (
+            f'<div style="{container_style}">'
+            f'<div style="{bar_style}">{percentage:.1f}%</div>'
+            '</div>'
+        )
+        
+        # Oluşturulan HTML kodunu ekrana yazdır
+        p_col.markdown(html_code, unsafe_allow_html=True)
+        
+        # Sayıları Türkçe yerel ayarlarına uygun formatla
         vem_str = f"{metrics['vem']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
         gov_str = f"{metrics['gov']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
         kalan_str = f"{metrics['kalan_hacim']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
