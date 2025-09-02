@@ -164,28 +164,28 @@ def get_blinking_style(is_critical: bool) -> str:
         /* st.metric bileşenini taklit eden yanıp sönen konteyner */
         .flash-metric-container {
             border-radius: 0.5rem;
-            padding: 0.5rem 0.75rem; /* Dikey padding azaltıldı */
+            padding: 0.75rem; /* Orjinal st.metric ile hizalamayı iyileştirmek için padding ayarlandı */
             animation-name: flashing-red;
             animation-duration: 1.5s;
             animation-iteration-count: infinite;
             text-align: left;
-            border: 1px solid transparent; /* Kenarlık hizalaması için */
+            border: 1px solid transparent; 
         }
         
-        /* "Kalan Süre" etiketi için stil */
+        /* "Kalan Süre" etiketi için stil (Daha sönük ve normal kalınlıkta) */
         .flash-metric-container .metric-label {
-            font-size: 0.875rem; /* Daha küçük etiket fontu */
-            color: #f0f2f6;      /* Streamlit'in etiket rengine yakın */
+            font-size: 0.875rem; 
+            color: rgba(255, 255, 255, 0.7); /* Orjinal etiket rengine daha yakın */
+            font-weight: normal; /* KALIN DEĞİL */
             display: block;
-            margin-bottom: -0.25rem; /* Değer ile aralığı azalt */
         }
 
-        /* Zaman değeri için stil */
+        /* Zaman değeri için stil (Normal kalınlıkta) */
         .flash-metric-container .metric-value {
             font-size: 1.75rem;
-            font-weight: bold;
+            font-weight: normal; /* ÖNEMLİ: Kalınlık kaldırıldı */
             color: white;
-            line-height: 1.2;
+            line-height: 1.4; 
         }
         </style>
         """
