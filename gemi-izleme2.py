@@ -166,10 +166,10 @@ def get_blinking_style(is_critical: bool) -> str:
             animation-name: flashing-red;
             animation-duration: 1.5s;
             animation-iteration-count: infinite;
-            text-align: center;
+            text-align: left;
         }
         .flash-alert .label {
-            font-size: 0.9rem;
+            font-size: 1.75rem;
             color: white;
         }
         .flash-alert .value {
