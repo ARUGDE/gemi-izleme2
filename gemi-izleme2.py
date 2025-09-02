@@ -288,47 +288,80 @@ def main():
     ref = init_firebase()
     
     # Durum mesajları için iki sütun oluştur. 
-    # Bu, sayfanın atlamasını (flicker) engeller.
     status_col1, status_col2 = st.columns([4, 1])
     
     # Veriyi çek
     all_tanks_data = get_live_data(ref)
     
-    # Durum mesajını ve son güncelleme saatini hazırla
+    # --- YENİ: VERİ TAZELİĞİ KONTROL MANTIĞI ---
+    is_data_stale = False
+    if all_tanks_data and isinstance(all_tanks_data, dict):
+        try:
+            # Herhangi bir tankın verisini al (ilk tank yeterlidir)
+            first_tank_data = list(all_tanks_data.values())[0]
+            
+            # 'updated_at' alanı var mı diye kontrol et
+            if isinstance(first_tank_data, dict) and 'updated_at' in first_tank_data:
+                timestamp_str = first_tank_data['updated_at']
+                
+                # Firebase'den gelen 'Z' (UTC) formatlı zaman damgasını datetime nesnesine çevir
+                last_update_utc = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                
+                # Şimdiki zamanı da UTC olarak al ki karşılaştırma doğru olsun
+                now_utc = datetime.now(timezone.utc)
+                
+                # Aradaki fark 15 saniyeyi geçtiyse, veri eskimiştir.
+                if (now_utc - last_update_utc).total_seconds() > 15:
+                    is_data_stale = True
+            else:
+                # Veri var ama beklenen formatta değilse (örn: updated_at yoksa) yine de uyar
+                is_data_stale = True
+        except (IndexError, KeyError, TypeError):
+            # Veri yapısı bozuksa veya beklenmedik bir formatta ise hatayı önle ve uyarı ver
+            is_data_stale = True
+
+    # --- GÜNCELLENMİŞ DURUM MESAJI BÖLÜMÜ ---
     timezone_tr = timezone(timedelta(hours=3))
-    current_time = datetime.now(timezone_tr).strftime('%H:%M:%S')
+    current_time_str = datetime.now(timezone_tr).strftime('%H:%M:%S')
 
     if not ref:
         status_col1.error(
             "Firebase bağlantısı kurulamadı. "
             "Lütfen Streamlit Cloud 'Secrets' ayarlarını kontrol edin."
         )
-    elif not all_tanks_data:
+    elif not all_tanks_data or is_data_stale:
         status_col1.warning(
-            "Veri bekleniyor... Lokaldeki 'itici.py' script'inin "
-            "çalıştığından emin olun."
+            "Veri akışı durdu veya bekleniyor... Lokaldeki script'in çalıştığından emin olun."
         )
     else:
         # Başarılı durumda, ana mesajı ve son güncelleme saatini soldaki kolona yaz.
+        # Not: Statik TANKS_TO_MONITOR yerine gelen veri sayısını yazdırmak daha doğrudur.
         status_col1.success(
-            f"{len(TANKS_TO_MONITOR)} adet tank izleniyor. Son güncelleme: {current_time}"
+            f"{len(all_tanks_data)} adet tank izleniyor. Son güncelleme: {current_time_str}"
         )
 
     # st.divider() # Çizgi çekerek ayırıyor. Alan işgal ettiği için kaldırıldı.
 
-    # Tüm tanklar için metrikleri hesapla
-    tank_metrics = []
-    for tank_no in TANKS_TO_MONITOR:
-        data = all_tanks_data.get(tank_no, {})
-        metrics = calculate_tank_metrics(tank_no, data)
-        tank_metrics.append(metrics)
-    
-    # Kalan süreye göre sırala (en az kalan en üstte)
-    tank_metrics.sort(key=lambda x: x['kalan_saat'])
-    
-    # Tank kartlarını ekrana çizdir
-    for i, metrics in enumerate(tank_metrics):
-        render_tank_card(metrics, f"{metrics['tank_no']}_{i}")
+    # --- GÜNCELLENMİŞ TANK KARTI GÖSTERİMİ ---
+    # Sadece veri varsa ve tazeyse tank kartlarını çizdir
+    if all_tanks_data and not is_data_stale and isinstance(all_tanks_data, dict):
+        # Tüm tanklar için metrikleri hesapla
+        tank_metrics = []
+        # Not: Statik liste yerine Firebase'den gelen tankları işle
+        for tank_no in all_tanks_data.keys():
+            data = all_tanks_data.get(tank_no, {})
+            # Veri içinde tank no dışında başka bir şey varsa atla
+            if not isinstance(data, dict) or 'updated_at' not in data:
+                continue
+            metrics = calculate_tank_metrics(tank_no, data)
+            tank_metrics.append(metrics)
+        
+        # Kalan süreye göre sırala (en az kalan en üstte)
+        tank_metrics.sort(key=lambda x: x['kalan_saat'])
+        
+        # Tank kartlarını ekrana çizdir
+        for i, metrics in enumerate(tank_metrics):
+            render_tank_card(metrics, f"{metrics['tank_no']}_{i}")
     
     # --- YENİ GERİ SAYIM ve YENİLEME BÖLÜMÜ ---
     # Sağdaki sütuna bir yer tutucu (placeholder) ekle
