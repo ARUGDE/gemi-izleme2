@@ -16,7 +16,6 @@ st.set_page_config(
 # -------------------------------------------------------------------
 # YAPILANDIRMA: İZLENECEK TANKLAR
 # -------------------------------------------------------------------
-# Hangi tankların izleneceğini değiştirmek için bu listeyi güncelleyin
 TANKS_TO_MONITOR = ['061', '073', '069', '153', '056', '065', '140', '150', '312', '314', '173', '176', '45', '136', '11', '14', '21', '22', '195', '194']
 # -------------------------------------------------------------------
 
@@ -52,7 +51,7 @@ VEM_DATA = {
     "136": 1621.501,"137": 1611.726,"138": 1609.112,"139": 1613.309,"140": 3146.776,
     "141": 521.833, "142": 522.585, "143": 820.545, "144": 801.728, "145": 819.384, 
     "146": 813.946, "147": 819.602, "148": 820.454, "149": 818.544, "150": 525.526, 
-    "151": 525.847, "152": 510.06,  "153": 573.01,  "154": 655.602, "155": 580.811, 
+    "151": 525.847, "152": 525.847, "153": 573.01,  "154": 655.602, "155": 580.811, 
     "156": 582.711, "157": 582.714, "158": 657.378, "159": 572.065, "160": 661.797, 
     "161": 661.366, "162": 662.567, "163": 662.107, "164": 2592.668,"165": 2575.208,
     "166": 2585.051,"167": 2580.359,"168": 791.414, "169": 2571.594,"170": 2604.542,
@@ -68,6 +67,35 @@ VEM_DATA = {
     "313": 2584.728,"314": 4047.136,"315": 4046.604,"316": 817.511
 }
 
+# --- YENİ FONKSİYON: ŞİFRE KONTROLÜ ---
+def check_password():
+    """Kullanıcı girişi için bir form gösterir ve şifreyi doğrular."""
+    # Eğer şifre zaten doğrulanmışsa ve session state'de saklanıyorsa, True döndür.
+    if st.session_state.get("password_correct", False):
+        return True
+
+    # Kullanıcı girişi için bir form oluştur. Bu, her tuşa basıldığında sayfanın
+    # yeniden yüklenmesini engeller.
+    with st.form("password_form"):
+        st.title("🚢 Gemi Operasyon Takibi")
+        st.write("Lütfen devam etmek için şifreyi girin.")
+        password = st.text_input("Şifre", type="password")
+        submitted = st.form_submit_button("Giriş Yap")
+
+        if submitted:
+            # secrets.toml dosyasından doğru şifreyi al
+            correct_password = st.secrets.get("APP_PASSWORD", "")
+            
+            # Girilen şifre ile doğru şifreyi karşılaştır
+            if password == correct_password:
+                st.session_state["password_correct"] = True
+                st.rerun()  # Sayfayı yeniden yükle ve ana uygulamayı göster
+            else:
+                st.error("Girdiğiniz şifre hatalı.")
+    
+    # Şifre doğru değilse veya form gönderilmediyse False döndür.
+    return False
+
 # --- YARDIMCI FONKSİYONLAR ---
 @st.cache_resource
 def init_firebase():
@@ -75,26 +103,18 @@ def init_firebase():
     try:
         cred_dict = st.secrets["firebase_credentials"]
         db_url = "https://gemi-izleme-default-rtdb.europe-west1.firebasedatabase.app"
-        
-        # Geçici bir kimlik bilgisi dosyası oluşturmak yerine sözlüğü doğrudan kullanabiliriz.
-        # Bu, dosya sistemi izinleriyle ilgili olası sorunları önler.
         cred = credentials.Certificate(dict(cred_dict))
-
         if not firebase_admin._apps:
             firebase_admin.initialize_app(cred, {'databaseURL': db_url})
-        
         return db.reference('live_tanks')
-    
     except Exception as e:
         st.error(f"Firebase bağlantısı başarısız oldu: {e}")
         return None
 
-@st.cache_data(ttl=3)  # Veriyi 3 saniye önbellekte tut
+@st.cache_data(ttl=3)
 def get_live_data(_ref) -> Dict:
     """Firebase'den canlı veriyi önbelleğe alarak çeker."""
-    if _ref is None:
-        return {}
-    
+    if _ref is None: return {}
     try:
         data = _ref.get()
         return data or {}
@@ -108,46 +128,31 @@ def calculate_tank_metrics(tank_no: str, data: Dict) -> Dict:
     rate = data.get('rate', 0)
     vem = VEM_DATA.get(tank_no, 0)
     product_name = data.get('product', 'Bilinmiyor')
-    
-    # Kalan hacim ve ilerleme yüzdesini hesapla
     kalan_hacim = max(vem - gov, 0)
     progress_yuzde = (gov / vem) * 100 if vem > 0 else 0
-    
-    # Kalan süreyi saat cinsinden hesapla
     kalan_saat = float('inf')
     if rate > 0 and vem > gov:
         kalan_saat = (vem - gov) / rate
     
-    # Tahmini bitiş zamanını ve kritik durum kontrolünü yap
     timezone_tr = timezone(timedelta(hours=3))
     tahmini_bitis_str = "Hesaplanamadı"
     kalan_sure_str = "N/A"
-    is_critical = False  # Kırmızı yanıp sönme uyarısı için
+    is_critical = False
     
     if kalan_saat != float('inf'):
         now_tr = datetime.now(timezone_tr)
         bitis_zamani = now_tr + timedelta(hours=kalan_saat)
         tahmini_bitis_str = bitis_zamani.strftime('%H:%M')
-        
         kalan_saat_int = int(kalan_saat)
         kalan_dakika_int = int((kalan_saat * 60) % 60)
         kalan_sure_str = f"{kalan_saat_int} sa {kalan_dakika_int} dk"
-        
-        # 15 dakikadan az kalıp kalmadığını kontrol et (0.25 saat)
         is_critical = kalan_saat <= 0.25
     
     return {
-        'tank_no': tank_no,
-        'product_name': product_name,
-        'gov': gov,
-        'rate': rate,
-        'vem': vem,
-        'kalan_hacim': kalan_hacim,
-        'progress_yuzde': progress_yuzde,
-        'kalan_saat': kalan_saat,
-        'tahmini_bitis_str': tahmini_bitis_str,
-        'kalan_sure_str': kalan_sure_str,
-        'is_critical': is_critical
+        'tank_no': tank_no, 'product_name': product_name, 'gov': gov, 'rate': rate, 
+        'vem': vem, 'kalan_hacim': kalan_hacim, 'progress_yuzde': progress_yuzde, 
+        'kalan_saat': kalan_saat, 'tahmini_bitis_str': tahmini_bitis_str, 
+        'kalan_sure_str': kalan_sure_str, 'is_critical': is_critical
     }
 
 def get_blinking_style(is_critical: bool) -> str:
@@ -160,49 +165,31 @@ def get_blinking_style(is_critical: bool) -> str:
             50%  { background-color: #a02c2c; }
             100% { background-color: #ff4b4b; }
         }
-        
-        /* st.metric bileşenini taklit eden yanıp sönen konteyner */
         .flash-metric-container {
-            border-radius: 0.5rem;
-            padding: 0.75rem; /* Orjinal st.metric ile hizalamayı iyileştirmek için padding ayarlandı */
-            animation-name: flashing-red;
-            animation-duration: 1.5s;
-            animation-iteration-count: infinite;
-            text-align: left;
+            border-radius: 0.5rem; padding: 0.75rem;
+            animation-name: flashing-red; animation-duration: 1.5s;
+            animation-iteration-count: infinite; text-align: left;
             border: 1px solid transparent; 
         }
-        
-        /* "Kalan Süre" etiketi için stil (Daha sönük ve normal kalınlıkta) */
         .flash-metric-container .metric-label {
-            font-size: 0.875rem; 
-            color: rgba(255, 255, 255, 0.7); /* Orjinal etiket rengine daha yakın */
-            font-weight: normal; /* KALIN DEĞİL */
-            display: block;
+            font-size: 0.875rem; color: rgba(255, 255, 255, 0.7);
+            font-weight: normal; display: block;
         }
-
-        /* Zaman değeri için stil (Normal kalınlıkta) */
         .flash-metric-container .metric-value {
-            font-size: 1.75rem;
-            font-weight: normal; /* ÖNEMLİ: Kalınlık kaldırıldı */
-            color: white;
-            line-height: 1.4; 
+            font-size: 1.75rem; font-weight: normal;
+            color: white; line-height: 1.4; 
         }
         </style>
         """
     return ""
 
-
 def render_tank_card(metrics: Dict, container_key: str) -> None:
     """Tek bir tank izleme kartını oluşturur."""
-    
-    # Kritik durumdaysa yanıp sönme CSS'ini ekle
     if metrics['is_critical']:
         st.markdown(get_blinking_style(True), unsafe_allow_html=True)
     
     with st.container(border=True, key=f"tank_{container_key}"):
-        # Başlık Bölümü
         col1, col2, col3, col4 = st.columns(4)
-        
         title = f"T{metrics['tank_no']}"
         if metrics['product_name'] != 'Bilinmiyor':
             title += f" / {metrics['product_name']}"
@@ -210,172 +197,92 @@ def render_tank_card(metrics: Dict, container_key: str) -> None:
         col1.markdown(f"<h3>{title}</h3>", unsafe_allow_html=True)
         col2.metric("Tahmini Bitiş Saati", metrics['tahmini_bitis_str'])
         
-        # Kalan süre kritik ise, etiketi de içeren özel HTML yapısını kullan
         if metrics['is_critical'] and metrics['kalan_sure_str'] != "N/A":
-            col3.markdown(
-                f"""
+            col3.markdown(f"""
                 <div class='flash-metric-container'>
                     <div class='metric-label'>Kalan Süre</div>
                     <div class='metric-value'>{metrics['kalan_sure_str']}</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+                </div>""", unsafe_allow_html=True)
         else:
-            # Kritik değilse, standart st.metric bileşenini kullanmaya devam et
             col3.metric("Kalan Süre", metrics['kalan_sure_str'])
         
         col4.metric("Rate (m³/h)", f"{metrics['rate']:.3f}")
         
-        # --- DEĞİŞİKLİK BURADA: İLERLEME ÇUBUĞU ---
         p_col, d_col = st.columns([2, 1])
-        
-        # Standart progress bar yerine özel HTML progress bar oluştur
         percentage = metrics['progress_yuzde']
+        color = "#198754"
+        if percentage >= 90: color = "#dc3545"
+        elif percentage >= 75: color = "#ffc107"
         
-        # Renkleri yüzdeye göre belirle
-        color = "#198754"  # Yeşil (Varsayılan)
-        if percentage >= 90:
-            color = "#dc3545"  # Kırmızı
-        elif percentage >= 75:
-            color = "#ffc107"  # Sarı
-        
-        # Çubuğun %100'ü geçmemesini sağla
         bar_width_percentage = min(percentage, 100)
-        
-        # HTML ve CSS stillerini oluştur
-        bar_style = (
-            f"width: {bar_width_percentage}%; "
-            f"background-color: {color}; "
-            "height: 24px; "
-            "border-radius: 5px; "
-            "display: flex; "
-            "align-items: center; "
-            "justify-content: center; "
-            "color: white; "
-            "font-weight: bold;"
-        )
+        bar_style = (f"width: {bar_width_percentage}%; background-color: {color}; height: 24px; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;")
         container_style = "width: 100%; background-color: #e9ecef; border-radius: 5px;"
-        
-        html_code = (
-            f'<div style="{container_style}">'
-            f'<div style="{bar_style}">{percentage:.1f}%</div>'
-            '</div>'
-        )
-        
-        # Oluşturulan HTML kodunu ekrana yazdır
+        html_code = (f'<div style="{container_style}"><div style="{bar_style}">{percentage:.1f}%</div></div>')
         p_col.markdown(html_code, unsafe_allow_html=True)
         
-        # Sayıları Türkçe yerel ayarlarına uygun formatla
         vem_str = f"{metrics['vem']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
         gov_str = f"{metrics['gov']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
         kalan_str = f"{metrics['kalan_hacim']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
         
         detail_html = f"""
         <div style='font-size: 1.1rem; text-align: center;'>
-            <b>Vem:</b> {vem_str} m³ | 
-            <b>GOV:</b> {gov_str} m³ | 
-            <b>Kalan:</b> {kalan_str} m³
-        </div>
-        """
+            <b>Vem:</b> {vem_str} m³ | <b>GOV:</b> {gov_str} m³ | <b>Kalan:</b> {kalan_str} m³
+        </div>"""
         d_col.markdown(detail_html, unsafe_allow_html=True)
 
 # --- ANA UYGULAMA ---
 def main():
-    # st.title("🚢 Gemi Operasyonları Canlı Takip Paneli")
-    
-    # Firebase bağlantısını başlat
     ref = init_firebase()
-    
-    # Durum mesajları için iki sütun oluştur. 
     status_col1, status_col2 = st.columns([4, 1])
-    
-    # Veriyi çek
     all_tanks_data = get_live_data(ref)
     
-    # --- YENİ: VERİ TAZELİĞİ KONTROL MANTIĞI ---
     is_data_stale = False
     if all_tanks_data and isinstance(all_tanks_data, dict):
         try:
-            # Herhangi bir tankın verisini al (ilk tank yeterlidir)
             first_tank_data = list(all_tanks_data.values())[0]
-            
-            # 'updated_at' alanı var mı diye kontrol et
             if isinstance(first_tank_data, dict) and 'updated_at' in first_tank_data:
                 timestamp_str = first_tank_data['updated_at']
-                
-                # Firebase'den gelen 'Z' (UTC) formatlı zaman damgasını datetime nesnesine çevir
                 last_update_utc = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-                
-                # Şimdiki zamanı da UTC olarak al ki karşılaştırma doğru olsun
                 now_utc = datetime.now(timezone.utc)
-                
-                # Aradaki fark 15 saniyeyi geçtiyse, veri eskimiştir.
-                if (now_utc - last_update_utc).total_seconds() > 300:
+                if (now_utc - last_update_utc).total_seconds() > 15:
                     is_data_stale = True
             else:
-                # Veri var ama beklenen formatta değilse (örn: updated_at yoksa) yine de uyar
                 is_data_stale = True
         except (IndexError, KeyError, TypeError):
-            # Veri yapısı bozuksa veya beklenmedik bir formatta ise hatayı önle ve uyarı ver
             is_data_stale = True
 
-    # --- GÜNCELLENMİŞ DURUM MESAJI BÖLÜMÜ ---
     timezone_tr = timezone(timedelta(hours=3))
     current_time_str = datetime.now(timezone_tr).strftime('%H:%M:%S')
 
     if not ref:
-        status_col1.error(
-            "Firebase bağlantısı kurulamadı. "
-            "Lütfen Streamlit Cloud 'Secrets' ayarlarını kontrol edin."
-        )
+        status_col1.error("Firebase bağlantısı kurulamadı. Lütfen Streamlit Cloud 'Secrets' ayarlarını kontrol edin.")
     elif not all_tanks_data or is_data_stale:
-        status_col1.warning(
-            "Veri akışı durdu veya bekleniyor..."
-        )
+        status_col1.warning("Veri akışı durdu veya bekleniyor...")
     else:
-        # Başarılı durumda, ana mesajı ve son güncelleme saatini soldaki kolona yaz.
-        # Not: Statik TANKS_TO_MONITOR yerine gelen veri sayısını yazdırmak daha doğrudur.
-        status_col1.success(
-            f"{len(TANKS_TO_MONITOR)}/{len(all_tanks_data)} adet tank izleniyor. Son güncelleme: {current_time_str}"
-        )
+        status_col1.success(f"{len(TANKS_TO_MONITOR)}/{len(all_tanks_data)} adet tank izleniyor. Son güncelleme: {current_time_str}")
 
-    # st.divider() # Çizgi çekerek ayırıyor. Alan işgal ettiği için kaldırıldı.
-
-    # --- GÜNCELLENMİŞ TANK KARTI GÖSTERİMİ ---
-    # Sadece veri varsa ve tazeyse tank kartlarını çizdir
     if all_tanks_data and not is_data_stale and isinstance(all_tanks_data, dict):
-        # Tüm tanklar için metrikleri hesapla
         tank_metrics = []
-        # Not: Statik liste yerine Firebase'den gelen tankları işle
-        # Firebase'den gelen tüm tankları değil, sadece sizin listenizdeki tankları işle
         for tank_no in TANKS_TO_MONITOR:
             data = all_tanks_data.get(tank_no, {})
-            # Eğer listedeki tank için Firebase'de veri yoksa, bu adımı atla
-            if not data:
-                continue
+            if not data: continue
             metrics = calculate_tank_metrics(tank_no, data)
             tank_metrics.append(metrics)
         
-        # Kalan süreye göre sırala (en az kalan en üstte)
         tank_metrics.sort(key=lambda x: x['kalan_saat'])
         
-        # Tank kartlarını ekrana çizdir
         for i, metrics in enumerate(tank_metrics):
             render_tank_card(metrics, f"{metrics['tank_no']}_{i}")
     
-    # --- YENİ GERİ SAYIM ve YENİLEME BÖLÜMÜ ---
-    # Sağdaki sütuna bir yer tutucu (placeholder) ekle
     countdown_placeholder = status_col2.empty()
-    
-    # 5'ten geriye doğru say ve yer tutucuyu her saniye güncelle
     refresh_saniye = 5
     for i in range(refresh_saniye, 0, -1):
         countdown_placeholder.write(f"⏳ Sonraki yenileme: {i} sn...")
         time.sleep(1)
     
-    # Geri sayım bitince sayfayı yeniden çalıştır
     st.rerun()
 
+# --- YENİ ÇALIŞTIRMA MANTIĞI ---
 if __name__ == "__main__":
-    main()
+    if check_password():
+        main()
