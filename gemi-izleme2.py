@@ -311,7 +311,7 @@ def main():
                 now_utc = datetime.now(timezone.utc)
                 
                 # Aradaki fark 15 saniyeyi geçtiyse, veri eskimiştir.
-                if (now_utc - last_update_utc).total_seconds() > 100:
+                if (now_utc - last_update_utc).total_seconds() > 300:
                     is_data_stale = True
             else:
                 # Veri var ama beklenen formatta değilse (örn: updated_at yoksa) yine de uyar
@@ -331,13 +331,13 @@ def main():
         )
     elif not all_tanks_data or is_data_stale:
         status_col1.warning(
-            "Veri akışı durdu veya bekleniyor... Lokaldeki script'in çalıştığından emin olun."
+            "Veri akışı durdu veya bekleniyor..."
         )
     else:
         # Başarılı durumda, ana mesajı ve son güncelleme saatini soldaki kolona yaz.
         # Not: Statik TANKS_TO_MONITOR yerine gelen veri sayısını yazdırmak daha doğrudur.
         status_col1.success(
-            f"{len(all_tanks_data)} adet tank izleniyor. Son güncelleme: {current_time_str}"
+            f"{len(TANKS_TO_MONITOR)}/{len(all_tanks_data)} adet tank izleniyor. Son güncelleme: {current_time_str}"
         )
 
     # st.divider() # Çizgi çekerek ayırıyor. Alan işgal ettiği için kaldırıldı.
