@@ -8,7 +8,7 @@ import time
 
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(
-    page_title="Gemi Operasyon Takibi",
+    page_title="Gemi İzleme",
     layout="wide",
     initial_sidebar_state="collapsed" # Kenar çubuğu varsayılan olarak kapalı
 )
