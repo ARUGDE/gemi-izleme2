@@ -245,7 +245,10 @@ def main():
     # Veriyi çek
     all_tanks_data = get_live_data(ref)
     
-    # Durum mesajını güncelle
+    # Durum mesajını ve son güncelleme saatini hazırla
+    timezone_tr = timezone(timedelta(hours=3))
+    current_time = datetime.now(timezone_tr).strftime('%H:%M:%S')
+
     if not ref:
         status_col1.error(
             "Firebase bağlantısı kurulamadı. "
@@ -257,14 +260,10 @@ def main():
             "çalıştığından emin olun."
         )
     else:
-        # Başarılı durumda, ana mesajı soldaki kolona, saati sağdaki kolona yaz.
-        # Böylece sadece saat güncellenir ve sayfa atlamaz.
+        # Başarılı durumda, ana mesajı ve son güncelleme saatini soldaki kolona yaz.
         status_col1.success(
-            f"{len(TANKS_TO_MONITOR)} adet tank izleniyor. Otomatik yenileme süresi 5 saniye."
+            f"{len(TANKS_TO_MONITOR)} adet tank izleniyor. Son güncelleme: {current_time}"
         )
-        timezone_tr = timezone(timedelta(hours=3))
-        current_time = datetime.now(timezone_tr).strftime('%H:%M:%S')
-        status_col2.write(f"**Son Güncelleme:** {current_time}")
 
     st.divider()
 
@@ -282,8 +281,17 @@ def main():
     for i, metrics in enumerate(tank_metrics):
         render_tank_card(metrics, f"{metrics['tank_no']}_{i}")
     
-    # Sayfayı 5 saniyede bir otomatik olarak yenile
-    time.sleep(5)
+    # --- YENİ GERİ SAYIM ve YENİLEME BÖLÜMÜ ---
+    # Sağdaki sütuna bir yer tutucu (placeholder) ekle
+    countdown_placeholder = status_col2.empty()
+    
+    # 5'ten geriye doğru say ve yer tutucuyu her saniye güncelle
+    refresh_saniye = 5
+    for i in range(refresh_saniye, 0, -1):
+        countdown_placeholder.write(f"⏳ Sonraki yenileme: {i} sn...")
+        time.sleep(1)
+    
+    # Geri sayım bitince sayfayı yeniden çalıştır
     st.rerun()
 
 if __name__ == "__main__":
