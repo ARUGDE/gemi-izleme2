@@ -244,7 +244,7 @@ def main():
                 timestamp_str = first_tank_data['updated_at']
                 last_update_utc = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
                 now_utc = datetime.now(timezone.utc)
-                if (now_utc - last_update_utc).total_seconds() > 15:
+                if (now_utc - last_update_utc).total_seconds() > 60:
                     is_data_stale = True
             else:
                 is_data_stale = True
