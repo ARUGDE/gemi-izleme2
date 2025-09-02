@@ -311,7 +311,7 @@ def main():
                 now_utc = datetime.now(timezone.utc)
                 
                 # Aradaki fark 15 saniyeyi geçtiyse, veri eskimiştir.
-                if (now_utc - last_update_utc).total_seconds() > 15:
+                if (now_utc - last_update_utc).total_seconds() > 100:
                     is_data_stale = True
             else:
                 # Veri var ama beklenen formatta değilse (örn: updated_at yoksa) yine de uyar
@@ -348,10 +348,11 @@ def main():
         # Tüm tanklar için metrikleri hesapla
         tank_metrics = []
         # Not: Statik liste yerine Firebase'den gelen tankları işle
-        for tank_no in all_tanks_data.keys():
+        # Firebase'den gelen tüm tankları değil, sadece sizin listenizdeki tankları işle
+        for tank_no in TANKS_TO_MONITOR:
             data = all_tanks_data.get(tank_no, {})
-            # Veri içinde tank no dışında başka bir şey varsa atla
-            if not isinstance(data, dict) or 'updated_at' not in data:
+            # Eğer listedeki tank için Firebase'de veri yoksa, bu adımı atla
+            if not data:
                 continue
             metrics = calculate_tank_metrics(tank_no, data)
             tank_metrics.append(metrics)
