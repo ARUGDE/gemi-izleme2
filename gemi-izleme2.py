@@ -138,7 +138,7 @@ def calculate_tank_metrics(tank_no: str, data: Dict) -> Dict:
         kalan_saat_int = int(kalan_saat)
         kalan_dakika_int = int((kalan_saat * 60) % 60)
         kalan_sure_str = f"{kalan_saat_int} sa {kalan_dakika_int} dk"
-        is_critical = kalan_saat <= 0.25
+        is_critical = kalan_saat <= 15.25
     
     return {
         'tank_no': tank_no, 'product_name': product_name, 'gov': gov, 'rate': rate, 
