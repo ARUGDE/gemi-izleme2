@@ -284,7 +284,7 @@ def main():
         status_col1.warning(f"Veri güncellenmemiş olabilir. Son güncelleme: {last_update_str}")
     else:
         active_tanks = sum(1 for tank_no in TANKS_TO_MONITOR if tank_no in all_tanks_data)
-        status_col1.success(f"{active_tanks}/{len(TANKS_TO_MONITOR)} tank izleniyor | Son güncelleme: {last_update_str}")
+        status_col1.success(f"{len(TANKS_TO_MONITOR)}/{len(all_tanks_data)} adet tank izleniyor. Son güncelleme: {current_time_str}")
 
     if all_tanks_data and isinstance(all_tanks_data, dict):
         tank_metrics = []
