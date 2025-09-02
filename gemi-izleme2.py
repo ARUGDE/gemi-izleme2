@@ -10,15 +10,16 @@ import time
 st.set_page_config(
     page_title="Gemi İzleme",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed" # Kenar çubuğu varsayılan olarak kapalı
 )
 
 # -------------------------------------------------------------------
 # YAPILANDIRMA: İZLENECEK TANKLAR
 # -------------------------------------------------------------------
 TANKS_TO_MONITOR = ['061', '073', '069', '153', '056', '065', '140', '150', '312', '314', '173', '176', '45', '136', '11', '14', '21', '22', '195', '194']
+# -------------------------------------------------------------------
 
-# --- STATİK VERİLER (VEM_DATA) - Kısaltılmış, tam liste kodunuzda mevcut ---
+# --- STATİK VERİLER (VEM_DATA) ---
 VEM_DATA = {
     "001": 391.791, "002": 389.295, "003": 392.011, "004": 391.557, "005": 389.851, 
     "006": 391.441, "007": 391.493, "008": 390.552, "009": 389.794, "010": 178.753, 
@@ -69,22 +70,27 @@ VEM_DATA = {
 # --- YENİ FONKSİYON: ŞİFRE KONTROLÜ ---
 def check_password():
     """Kullanıcı girişi için bir form gösterir ve şifreyi doğrular."""
+    # Eğer şifre zaten doğrulanmışsa ve session state'de saklanıyorsa, True döndür.
     if st.session_state.get("password_correct", False):
         return True
 
+    # Kullanıcı girişi için bir form oluştur
     with st.form("password_form"):
         password = st.text_input("Uygulamayı Görüntülemek İçin Şifre Girin", type="password")
         submitted = st.form_submit_button("Giriş Yap")
 
         if submitted:
+            # secrets.toml dosyasından doğru şifreyi al
             correct_password = st.secrets.get("APP_PASSWORD", "")
             
+            # Girilen şifre ile doğru şifreyi karşılaştır
             if password == correct_password:
                 st.session_state["password_correct"] = True
-                st.rerun()
+                st.rerun()  # Sayfayı yeniden yükle ve ana uygulamayı göster
             else:
                 st.error("Girdiğiniz şifre hatalı.")
     
+    # Şifre doğru değilse veya form gönderilmediyse False döndür.
     return False
 
 # --- YARDIMCI FONKSİYONLAR ---
@@ -102,76 +108,16 @@ def init_firebase():
         st.error(f"Firebase bağlantısı başarısız oldu: {e}")
         return None
 
-# Cache süresini artırdık ve refresh süresiyle uyumlu hale getirdik
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=5)  # TTL'yi 5 saniyeye çıkardık (refresh süresiyle uyumlu)
 def get_live_data(_ref) -> Dict:
     """Firebase'den canlı veriyi önbelleğe alarak çeker."""
-    if _ref is None: 
-        return {}
+    if _ref is None: return {}
     try:
         data = _ref.get()
-        if data is None:
-            return {}
-        
-        # Debug için veri yapısını kontrol et
-        if st.session_state.get("debug_mode", False):
-            st.sidebar.write("Ham veri örneği:", list(data.items())[:1] if data else "Boş")
-        
-        return data
+        return data or {}
     except Exception as e:
         st.warning(f"Veri alınırken hata oluştu: {e}")
         return {}
-
-def check_data_freshness(all_tanks_data: Dict) -> tuple[bool, str]:
-    """
-    Veri güncelliğini kontrol eder.
-    Returns: (is_stale, last_update_str)
-    """
-    if not all_tanks_data or not isinstance(all_tanks_data, dict):
-        return True, "Veri yok"
-    
-    # Birden fazla tank'ın timestamp'ini kontrol et
-    timestamps = []
-    for tank_no, tank_data in all_tanks_data.items():
-        if isinstance(tank_data, dict) and 'updated_at' in tank_data:
-            try:
-                timestamp_str = tank_data['updated_at']
-                # Farklı timestamp formatlarını destekle
-                if 'T' in timestamp_str:  # ISO format
-                    if timestamp_str.endswith('Z'):
-                        last_update = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-                    else:
-                        last_update = datetime.fromisoformat(timestamp_str)
-                else:  # Unix timestamp olabilir
-                    last_update = datetime.fromtimestamp(float(timestamp_str), tz=timezone.utc)
-                
-                timestamps.append(last_update)
-            except (ValueError, TypeError) as e:
-                if st.session_state.get("debug_mode", False):
-                    st.sidebar.write(f"Timestamp parse hatası {tank_no}: {e}")
-                continue
-    
-    if not timestamps:
-        # Eğer hiçbir timestamp bulunamadıysa, veriyi kabul et (timestamp olmayabilir)
-        return False, "Timestamp bilgisi yok"
-    
-    # En güncel timestamp'i kullan
-    most_recent = max(timestamps)
-    now_utc = datetime.now(timezone.utc)
-    time_diff = (now_utc - most_recent).total_seconds()
-    
-    # Toleransı artırdık: 5 dakika (300 saniye)
-    is_stale = time_diff > 15
-    
-    # Türkiye saatine çevir
-    timezone_tr = timezone(timedelta(hours=3))
-    last_update_tr = most_recent.astimezone(timezone_tr)
-    last_update_str = last_update_tr.strftime('%H:%M:%S')
-    
-    if st.session_state.get("debug_mode", False):
-        st.sidebar.write(f"Son güncelleme: {last_update_str}, {time_diff:.0f} saniye önce")
-    
-    return is_stale, last_update_str
 
 def calculate_tank_metrics(tank_no: str, data: Dict) -> Dict:
     """Tek bir tank için tüm metrikleri hesaplar."""
@@ -283,68 +229,85 @@ def render_tank_card(metrics: Dict, container_key: str) -> None:
 
 # --- ANA UYGULAMA ---
 def main():
-    # Debug modu için sidebar'a checkbox ekle
-    with st.sidebar:
-        st.session_state["debug_mode"] = st.checkbox("Debug Modu", value=False)
-        if st.button("Cache'i Temizle"):
-            st.cache_data.clear()
-            st.rerun()
-    
     ref = init_firebase()
     status_col1, status_col2 = st.columns([4, 1])
-    
-    # Firebase'den veri çek
     all_tanks_data = get_live_data(ref)
     
-    # Veri güncelliğini kontrol et
-    is_data_stale, last_update_str = check_data_freshness(all_tanks_data)
+    # Timestamp kontrolü - daha toleranslı
+    is_data_stale = False
+    last_update_str = "Bilinmiyor"
     
+    if all_tanks_data and isinstance(all_tanks_data, dict):
+        try:
+            # Birden fazla tank'ın timestamp'ini kontrol et
+            timestamps = []
+            for tank_no, tank_data in all_tanks_data.items():
+                if isinstance(tank_data, dict) and 'updated_at' in tank_data:
+                    try:
+                        timestamp_str = tank_data['updated_at']
+                        # Firebase'den gelen Z formatını düzgün parse et
+                        if timestamp_str.endswith('Z'):
+                            last_update_utc = datetime.fromisoformat(timestamp_str[:-1] + '+00:00')
+                        else:
+                            last_update_utc = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                        timestamps.append(last_update_utc)
+                    except:
+                        continue
+            
+            if timestamps:
+                # En güncel timestamp'i kullan
+                most_recent = max(timestamps)
+                now_utc = datetime.now(timezone.utc)
+                time_diff = (now_utc - most_recent).total_seconds()
+                
+                # 5 dakika (300 saniye) tolerans
+                if time_diff > 300:
+                    is_data_stale = True
+                
+                # Türkiye saatine çevir
+                timezone_tr = timezone(timedelta(hours=3))
+                last_update_tr = most_recent.astimezone(timezone_tr)
+                last_update_str = last_update_tr.strftime('%H:%M:%S')
+                
+        except Exception:
+            # Herhangi bir hata durumunda veriyi kabul et
+            is_data_stale = False
+
     timezone_tr = timezone(timedelta(hours=3))
     current_time_str = datetime.now(timezone_tr).strftime('%H:%M:%S')
 
-    # Durum mesajlarını göster
     if not ref:
         status_col1.error("Firebase bağlantısı kurulamadı. Lütfen Streamlit Cloud 'Secrets' ayarlarını kontrol edin.")
     elif not all_tanks_data:
-        status_col1.warning("Firebase'den veri alınamıyor. Bağlantıyı kontrol edin...")
+        status_col1.warning("Veri akışı durdu veya bekleniyor...")
     elif is_data_stale:
         status_col1.warning(f"Veri güncellenmemiş olabilir. Son güncelleme: {last_update_str}")
     else:
         active_tanks = sum(1 for tank_no in TANKS_TO_MONITOR if tank_no in all_tanks_data)
-        status_col1.success(f"{active_tanks}/{len(TANKS_TO_MONITOR)} tank aktif | Veri zamanı: {last_update_str} | Saat: {current_time_str}")
+        status_col1.success(f"{active_tanks}/{len(TANKS_TO_MONITOR)} tank izleniyor | Son güncelleme: {last_update_str}")
 
-    # Tank verilerini göster
     if all_tanks_data and isinstance(all_tanks_data, dict):
         tank_metrics = []
         for tank_no in TANKS_TO_MONITOR:
             data = all_tanks_data.get(tank_no, {})
-            if not data or not isinstance(data, dict):
-                continue
-            
-            # En azından gov ve rate değerleri olmalı
-            if 'gov' not in data and 'rate' not in data:
-                continue
-                
+            if not data: continue
             metrics = calculate_tank_metrics(tank_no, data)
             tank_metrics.append(metrics)
         
-        # Kalan süreye göre sırala
         tank_metrics.sort(key=lambda x: x['kalan_saat'])
         
-        # Tank kartlarını render et
         for i, metrics in enumerate(tank_metrics):
             render_tank_card(metrics, f"{metrics['tank_no']}_{i}")
     
-    # Otomatik yenileme
     countdown_placeholder = status_col2.empty()
     refresh_saniye = 5
     for i in range(refresh_saniye, 0, -1):
-        countdown_placeholder.write(f"⏳ Yenileme: {i} sn...")
+        countdown_placeholder.write(f"⏳ Sonraki yenileme: {i} sn...")
         time.sleep(1)
     
     st.rerun()
 
-# --- ÇALIŞTIRMA ---
+# --- YENİ ÇALIŞTIRMA MANTIĞI ---
 if __name__ == "__main__":
     if check_password():
         main()
