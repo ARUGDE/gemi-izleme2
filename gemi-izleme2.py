@@ -314,7 +314,7 @@ def main():
             f"{len(TANKS_TO_MONITOR)} adet tank izleniyor. Son güncelleme: {current_time}"
         )
 
-    st.divider()
+    # st.divider() # Çizgi çekerek ayırıyor. Alan işgal ettiği için kaldırıldı.
 
     # Tüm tanklar için metrikleri hesapla
     tank_metrics = []
