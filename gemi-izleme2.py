@@ -422,22 +422,31 @@ def main():
         for i, metrics in enumerate(tank_metrics):
             render_tank_card(metrics, f"{metrics['tank_no']}_{i}", config_ref)
     
-    # Session state'deki hedef hacim değerlerini kontrol et ve Firebase'e kaydet
-    if config_ref:
+    # Hedef hacim değişikliklerini kontrol et - SADECE gösterilen tanklar için
+    need_refresh = False
+    if config_ref and TANKS_TO_MONITOR:
         for tank_no in TANKS_TO_MONITOR:
-            input_key = f"target_input_{tank_no}"
-            if input_key in st.session_state:
-                new_value = st.session_state[input_key]
+            # Sadece ekranda gösterilen tanklar için kontrol yap
+            if tank_no not in all_tanks_data:
+                continue
+                
+            widget_key = f"target_{tank_no}"
+            if widget_key in st.session_state:
+                new_value = st.session_state[widget_key]
                 current_value = target_volumes.get(tank_no, 0.0) or 0.0
                 
-                # Değer değiştiyse Firebase'e kaydet
-                if new_value != current_value:
+                # Değer gerçekten değiştiyse Firebase'e kaydet
+                if abs(new_value - current_value) > 0.001:  # Float karşılaştırma hassasiyeti
                     if new_value > 0:
                         save_target_volume(config_ref, tank_no, new_value)
-                        st.cache_data.clear()
+                        need_refresh = True
                     elif current_value > 0:
                         save_target_volume(config_ref, tank_no, None)
-                        st.cache_data.clear()
+                        need_refresh = True
+    
+    # Eğer değişiklik varsa cache'i temizle ama rerun tetikleme
+    if need_refresh:
+        st.cache_data.clear()
     
     countdown_placeholder = status_col2.empty()
     refresh_saniye = 5
