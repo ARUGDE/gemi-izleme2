@@ -241,29 +241,30 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_
     """Tek bir tank izleme kartını oluşturur."""
     if metrics['is_critical']:
         st.markdown(get_blinking_style(True), unsafe_allow_html=True)
-    
-    with st.container(border=True, key=f"tank_{container_key}"):
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            # İlk satırda Tank No
-            st.markdown(f"<h3>T{metrics['tank_no']}</h3>", unsafe_allow_html=True)
-            
-            # İkinci satırda Hedef Hacim girişi
-            st.number_input(
-                label="Hedef Hacim",
-                value=target_vem if target_vem and target_vem > 0 else None,
-                min_value=0.0,
-                format="%.3f",
-                key=f"target_vem_{metrics['tank_no']}",
-                on_change=save_target_volume,
-                args=(config_ref, metrics['tank_no']),
-                label_visibility="collapsed"
-            )
 
-        # Diğer sütunlarda bilgiler
+    with st.container(border=True, key=f"tank_{container_key}"):
+        col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
+
+        # col1 içinde mini-sütun: başlık + hedef hacim yan yana
+        with col1:
+            sub_c1, sub_c2 = st.columns([1, 1.5])
+            with sub_c1:
+                st.markdown(f"<h3 style='margin:0;'>T{metrics['tank_no']}</h3>",
+                            unsafe_allow_html=True)
+            with sub_c2:
+                st.number_input(
+                    label="Hedef Hacim",
+                    value=target_vem if target_vem and target_vem > 0 else None,
+                    min_value=0.0,
+                    format="%.3f",
+                    key=f"target_vem_{metrics['tank_no']}",
+                    on_change=save_target_volume,
+                    args=(config_ref, metrics['tank_no']),
+                    label_visibility="collapsed"
+                )
+
         col2.metric("Tahmini Bitiş Saati", metrics['tahmini_bitis_str'])
-        
+
         if metrics['is_critical'] and metrics['kalan_sure_str'] != "N/A":
             col3.markdown(f"""
                 <div class='flash-metric-container'>
@@ -272,7 +273,7 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_
                 </div>""", unsafe_allow_html=True)
         else:
             col3.metric("Kalan Süre", metrics['kalan_sure_str'])
-        
+
         col4.metric("Rate (m³/h)", f"{metrics['rate']:.3f}")
         
         p_col, d_col = st.columns([2, 1])
