@@ -57,7 +57,7 @@ VEM_DATA = {
     "196": 523.443, "197": 2615.873,"198": 2615.074,"199": 2613.543,"200": 2621.85, 
     "201": 2886.254,"202": 2947.046,"203": 2940.117,"301": 8326.391,"302": 8312.304,
     "303": 8338.008,"304": 2602.301,"305": 4056.633,"306": 4901.019,"307": 4909.636,
-    "308": 4920.855,"309": 2579.913,"310": 4921.899,"311": 2581.794,"312": 4047.328,
+    "308": 4920.855,"309": 2597.913,"310": 4921.899,"311": 2581.794,"312": 4047.328,
     "313": 2584.728,"314": 4047.136,"315": 4046.604,"316": 817.511
 }
 
@@ -143,10 +143,8 @@ def calculate_tank_metrics(tank_no: str, data: Dict, target_volume: Optional[flo
     gov = data.get('gov', 0)
     rate = data.get('rate', 0)
     
-    # Düzeltme Notu: Orijinal VEM her zaman hesaplanır.
     original_vem = VEM_DATA.get(tank_no, 0)
     
-    # Düzeltme Notu: Kullanılacak VEM değeri (hesaplama için) öncelik sırasına göre belirlenir.
     if target_volume is not None and target_volume > 0:
         calculation_vem = target_volume
     else:
@@ -178,7 +176,7 @@ def calculate_tank_metrics(tank_no: str, data: Dict, target_volume: Optional[flo
         'original_vem': original_vem, 'kalan_hacim': kalan_hacim, 'progress_yuzde': progress_yuzde, 
         'kalan_saat': kalan_saat, 'tahmini_bitis_str': tahmini_bitis_str, 
         'kalan_sure_str': kalan_sure_str, 'is_critical': is_critical,
-        'target_volume': target_volume, 'calculation_vem': calculation_vem
+        'target_volume': target_volume
     }
 
 def get_blinking_style(is_critical: bool) -> str:
@@ -196,27 +194,25 @@ def get_blinking_style(is_critical: bool) -> str:
             animation-iteration-count: infinite; text-align: left;
             border: 1px solid transparent; 
         }
-        .flash-metric-container .metric-label {
-            font-size: 0.875rem; color: rgba(255, 255, 255, 0.7);
-            font-weight: normal; display: block;
-        }
-        .flash-metric-container .metric-value {
-            font-size: 1.75rem; font-weight: normal;
-            color: white; line-height: 1.4; 
-        }
+        .flash-metric-container .metric-label { font-size: 0.875rem; color: rgba(255, 255, 255, 0.7); font-weight: normal; display: block; }
+        .flash-metric-container .metric-value { font-size: 1.75rem; font-weight: normal; color: white; line-height: 1.4; }
         </style>
         """
     return ""
+
+# Düzeltme Notu: KeyError hatasını çözmek için yeni callback fonksiyonu
+def handle_target_change(config_ref, tank_no, widget_key):
+    """on_change callback'i için aracı fonksiyon."""
+    new_volume = st.session_state.get(widget_key)
+    save_target_volume(config_ref, tank_no, new_volume)
 
 def render_tank_card(metrics: Dict, container_key: str, config_ref) -> None:
     if metrics['is_critical']:
         st.markdown(get_blinking_style(True), unsafe_allow_html=True)
     
     with st.container(border=True, key=f"tank_{container_key}"):
-        # Düzeltme Notu: Başlık ve metrikler için yerleşim ayrıldı
-        col1, col2, col3, col4 = st.columns(4)
-        
         # Üst Satır: Başlık ve Metrikler
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             title = f"T{metrics['tank_no']}"
             if metrics['product_name'] != 'Bilinmiyor':
@@ -224,7 +220,6 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref) -> None:
             st.markdown(f"<h5>{title}</h5>", unsafe_allow_html=True)
 
         col2.metric("Tahmini Bitiş Saati", metrics['tahmini_bitis_str'])
-        
         if metrics['is_critical'] and metrics['kalan_sure_str'] != "N/A":
             col3.markdown(f"""
                 <div class='flash-metric-container'>
@@ -233,51 +228,48 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref) -> None:
                 </div>""", unsafe_allow_html=True)
         else:
             col3.metric("Kalan Süre", metrics['kalan_sure_str'])
-        
         col4.metric("Rate (m³/h)", f"{metrics['rate']:.3f}")
 
-        # Düzeltme Notu: Alt satırda Hedef Hacim girişi için yeni bir sütun düzeni
-        input_col, _, details_col = st.columns([1, 1, 2])
-        
-        with input_col:
+        st.divider() # Ayırıcı çizgi
+
+        # Alt Satır: İlerleme Çubuğu, Detaylar ve Hedef Hacim Girişi
+        p_col, d_col = st.columns([2, 1])
+        with p_col:
+            # Hedef Hacim Giriş Alanı
             st.markdown("<div style='font-size: 0.8rem; margin-bottom: -10px;'>Hedef Hacim (m³)</div>", unsafe_allow_html=True)
-            target_input = st.number_input(
+            widget_key = f"target_{metrics['tank_no']}_{container_key}"
+            st.number_input(
                 "Hedef Hacim",
                 min_value=0.0,
                 value=float(metrics.get('target_volume') or 0.0),
                 step=10.0,
                 format="%.3f",
-                key=f"target_{metrics['tank_no']}_{container_key}",
+                key=widget_key,
                 label_visibility="collapsed",
-                on_change=save_target_volume,
-                args=(config_ref, metrics['tank_no'], st.session_state[f"target_{metrics['tank_no']}_{container_key}"])
+                on_change=handle_target_change,
+                args=(config_ref, metrics['tank_no'], widget_key)
             )
-
-        # İlerleme Çubuğu (Ortada)
-        p_col, d_col = st.columns([2, 1])
-        with _: # Boş sütun ile ortala
-            pass
-
-        # Detaylar Bölümü (Sağda)
-        with details_col:
+            
+            # İlerleme Çubuğu
             percentage = metrics['progress_yuzde']
             color = "#198754"
             if percentage >= 90: color = "#dc3545"
             elif percentage >= 75: color = "#ffc107"
             
             bar_width_percentage = min(percentage, 100)
-            bar_style = (f"width: {bar_width_percentage}%; background-color: {color}; height: 24px; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;")
-            container_style = "width: 100%; background-color: #e9ecef; border-radius: 5px;"
-            html_code = (f'<div style="{container_style}"><div style="{bar_style}">{percentage:.1f}%</div></div>')
+            bar_style = f"width: {bar_width_percentage}%; background-color: {color}; height: 24px; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;"
+            container_style = "width: 100%; background-color: #e9ecef; border-radius: 5px; margin-top: 10px;"
+            html_code = f'<div style="{container_style}"><div style="{bar_style}">{percentage:.1f}%</div></div>'
             st.markdown(html_code, unsafe_allow_html=True)
-            
-            # Düzeltme Notu: vem_str her zaman orijinal VEM'i kullanacak
+
+        with d_col:
+            # Düzeltme Notu: Vem değeri her zaman orijinal VEM'den gösterilir
             vem_str = f"{metrics['original_vem']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
             gov_str = f"{metrics['gov']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
             kalan_str = f"{metrics['kalan_hacim']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
             
             detail_html = f"""
-            <div style='font-size: 1.1rem; text-align: right; margin-top: 5px;'>
+            <div style='font-size: 1.1rem; text-align: right; padding-top: 55px;'>
                 <b>Vem:</b> {vem_str} m³ | <b>GOV:</b> {gov_str} m³ | <b>Kalan:</b> {kalan_str} m³
             </div>"""
             st.markdown(detail_html, unsafe_allow_html=True)
@@ -288,7 +280,6 @@ def main():
     tank_selection_col, status_col1, status_col2 = st.columns([3, 4, 1])
     
     available_tanks = sorted(VEM_DATA.keys(), key=lambda x: int(x))
-    
     current_selected_tanks = get_selected_tanks(config_ref)
     
     with tank_selection_col:
@@ -308,7 +299,6 @@ def main():
     TANKS_TO_MONITOR = selected_tanks
     
     target_volumes = get_target_volumes(config_ref)
-    
     all_tanks_data = get_live_data(ref)
     
     is_data_stale = False
@@ -320,32 +310,23 @@ def main():
             for tank_no, tank_data in all_tanks_data.items():
                 if isinstance(tank_data, dict) and 'updated_at' in tank_data:
                     try:
-                        timestamp_str = tank_data['updated_at']
-                        if timestamp_str.endswith('Z'):
-                            last_update_utc = datetime.fromisoformat(timestamp_str[:-1] + '+00:00')
-                        else:
-                            last_update_utc = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                        ts_str = tank_data['updated_at']
+                        last_update_utc = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
                         timestamps.append(last_update_utc)
-                    except:
-                        continue
+                    except: continue
             
             if timestamps:
                 most_recent = max(timestamps)
-                now_utc = datetime.now(timezone.utc)
-                time_diff = (now_utc - most_recent).total_seconds()
-                
-                if time_diff > 15:
-                    is_data_stale = True
+                time_diff = (datetime.now(timezone.utc) - most_recent).total_seconds()
+                if time_diff > 15: is_data_stale = True
                 
                 timezone_tr = timezone(timedelta(hours=3))
                 last_update_tr = most_recent.astimezone(timezone_tr)
                 last_update_str = last_update_tr.strftime('%H:%M:%S')
-                
         except Exception:
             is_data_stale = False
 
-    timezone_tr = timezone(timedelta(hours=3))
-    current_time_str = datetime.now(timezone_tr).strftime('%H:%M:%S')
+    current_time_str = datetime.now(timezone(timedelta(hours=3))).strftime('%H:%M:%S')
 
     if not ref:
         status_col1.error("Firebase bağlantısı kurulamadı. Lütfen Streamlit Cloud 'Secrets' ayarlarını kontrol edin.")
@@ -354,7 +335,7 @@ def main():
     elif is_data_stale:
         status_col1.warning(f"Veri güncellenmemiş olabilir. Son güncelleme: {last_update_str}")
     else:
-        if len(TANKS_TO_MONITOR) == 0:
+        if not TANKS_TO_MONITOR:
             status_col1.info("İzlenecek tankları seçin. Seçtiğiniz tanklar herkes için geçerli olacaktır!")
         else:
             active_tanks = sum(1 for tank_no in TANKS_TO_MONITOR if tank_no in all_tanks_data)
@@ -364,7 +345,7 @@ def main():
         tank_metrics = []
         for tank_no in TANKS_TO_MONITOR:
             data = all_tanks_data.get(tank_no, {})
-            # Düzeltme Notu: `if not data: continue` kaldırıldı
+            # Düzeltme Notu: Bu döngüdeki 'continue' kaldırıldı, tank verisi olmasa bile kart gösterilir.
             target_vol = target_volumes.get(tank_no)
             metrics = calculate_tank_metrics(tank_no, data, target_vol)
             tank_metrics.append(metrics)
