@@ -10,7 +10,7 @@ import time
 st.set_page_config(
     page_title="Gemi İzleme",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed" # Kenar çubuğu varsayılan olarak kapalı
 )
 
 # --- STATİK VERİLER (VEM_DATA) ---
@@ -61,34 +61,54 @@ VEM_DATA = {
     "313": 2584.728,"314": 4047.136,"315": 4046.604,"316": 817.511
 }
 
+# --- YENİ FONKSİYON: ŞİFRE KONTROLÜ ---
 def check_password():
+    """Kullanıcı girişi için bir form gösterir ve şifreyi doğrular."""
+    # Eğer şifre zaten doğrulanmışsa ve session state'de saklanıyorsa, True döndür.
     if st.session_state.get("password_correct", False):
         return True
+
+    # Kullanıcı girişi için bir form oluştur
     with st.form("password_form"):
         password = st.text_input("Uygulamayı Görüntülemek İçin Şifre Girin", type="password")
         submitted = st.form_submit_button("Giriş Yap")
+
         if submitted:
+            # secrets.toml dosyasından doğru şifreyi al
             correct_password = st.secrets.get("APP_PASSWORD", "")
+            
+            # Girilen şifre ile doğru şifreyi karşılaştır
             if password == correct_password:
                 st.session_state["password_correct"] = True
-                st.rerun()
+                st.rerun()  # Sayfayı yeniden yükle ve ana uygulamayı göster
             else:
                 st.error("Girdiğiniz şifre hatalı.")
+    
+    # Şifre doğru değilse veya form gönderilmediyse False döndür.
     return False
 
+# --- YENİ FONKSİYON: TANK SEÇİMLERİ İÇİN FİREBASE İŞLEMLERİ ---
 @st.cache_data(ttl=5)
 def get_selected_tanks(_config_ref) -> List[str]:
-    if _config_ref is None: return []
+    """Firebase'den seçili tank listesini çeker."""
+    if _config_ref is None:
+        return []  # DEFAULT_TANKS_TO_MONITOR yerine boş liste döndür
     try:
         selected = _config_ref.child('selected_tanks').get()
-        return selected if selected and isinstance(selected, list) else []
+        if selected and isinstance(selected, list) and len(selected) > 0:
+            return selected
+        else:
+            return []  # DEFAULT_TANKS_TO_MONITOR yerine boş liste döndür
     except Exception:
-        return []
+        return []  # DEFAULT_TANKS_TO_MONITOR yerine boş liste döndür
 
 def save_selected_tanks(config_ref, tanks: List[str]):
-    if config_ref is None: return
+    """Seçili tank listesini Firebase'e kaydeder."""
+    if config_ref is None:
+        return
     try:
         config_ref.child('selected_tanks').set(tanks)
+        # Tank seçimi değiştiğinde, artık izlenmeyen tankların hedef hacim verilerini sil
         current_targets = config_ref.child('target_volumes').get() or {}
         for tank_no in list(current_targets.keys()):
             if tank_no not in tanks:
@@ -96,9 +116,12 @@ def save_selected_tanks(config_ref, tanks: List[str]):
     except Exception as e:
         st.error(f"Tank seçimleri kaydedilemedi: {e}")
 
+# --- YENİ FONKSİYON: HEDEF HACİM İŞLEMLERİ ---
 @st.cache_data(ttl=5)
 def get_target_volumes(_config_ref) -> Dict[str, float]:
-    if _config_ref is None: return {}
+    """Firebase'den hedef hacim değerlerini çeker."""
+    if _config_ref is None:
+        return {}
     try:
         targets = _config_ref.child('target_volumes').get()
         return targets if targets else {}
@@ -106,18 +129,22 @@ def get_target_volumes(_config_ref) -> Dict[str, float]:
         return {}
 
 def save_target_volume(config_ref, tank_no: str, volume: Optional[float]):
-    if config_ref is None: return
+    """Bir tank için hedef hacim değerini Firebase'e kaydeder."""
+    if config_ref is None:
+        return
     try:
         if volume is not None and volume > 0:
             config_ref.child('target_volumes').child(tank_no).set(volume)
         else:
+            # Değer geçersizse Firebase'den sil
             config_ref.child('target_volumes').child(tank_no).delete()
-        st.cache_data.clear()
     except Exception as e:
         st.error(f"Hedef hacim kaydedilemedi: {e}")
 
+# --- YARDIMCI FONKSİYONLAR ---
 @st.cache_resource
 def init_firebase():
+    """Firebase bağlantısını önbelleğe alarak başlatır."""
     try:
         cred_dict = st.secrets["firebase_credentials"]
         db_url = st.secrets["db_url"]
@@ -129,8 +156,9 @@ def init_firebase():
         st.error(f"Firebase bağlantısı başarısız oldu: {e}")
         return None, None
 
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=5)  # TTL'yi 5 saniyeye çıkardık (refresh süresiyle uyumlu)
 def get_live_data(_ref) -> Dict:
+    """Firebase'den canlı veriyi önbelleğe alarak çeker."""
     if _ref is None: return {}
     try:
         data = _ref.get()
@@ -140,21 +168,22 @@ def get_live_data(_ref) -> Dict:
         return {}
 
 def calculate_tank_metrics(tank_no: str, data: Dict, target_volume: Optional[float] = None) -> Dict:
+    """Tek bir tank için tüm metrikleri hesaplar. Hedef hacim varsa onu kullanır."""
     gov = data.get('gov', 0)
     rate = data.get('rate', 0)
-    original_vem = VEM_DATA.get(tank_no, 0)
     
+    # Hedef hacim varsa onu kullan, yoksa VEM_DATA'dan al
     if target_volume is not None and target_volume > 0:
-        calculation_vem = target_volume
+        vem = target_volume
     else:
-        calculation_vem = original_vem
+        vem = VEM_DATA.get(tank_no, 0)
     
     product_name = data.get('product', 'Bilinmiyor')
-    kalan_hacim = max(calculation_vem - gov, 0)
-    progress_yuzde = (gov / calculation_vem) * 100 if calculation_vem > 0 else 0
+    kalan_hacim = max(vem - gov, 0)
+    progress_yuzde = (gov / vem) * 100 if vem > 0 else 0
     kalan_saat = float('inf')
-    if rate > 0 and calculation_vem > gov:
-        kalan_saat = (calculation_vem - gov) / rate
+    if rate > 0 and vem > gov:
+        kalan_saat = (vem - gov) / rate
     
     timezone_tr = timezone(timedelta(hours=3))
     tahmini_bitis_str = "Hesaplanamadı"
@@ -172,124 +201,126 @@ def calculate_tank_metrics(tank_no: str, data: Dict, target_volume: Optional[flo
     
     return {
         'tank_no': tank_no, 'product_name': product_name, 'gov': gov, 'rate': rate, 
-        'original_vem': original_vem, 'kalan_hacim': kalan_hacim, 'progress_yuzde': progress_yuzde, 
+        'vem': vem, 'kalan_hacim': kalan_hacim, 'progress_yuzde': progress_yuzde, 
         'kalan_saat': kalan_saat, 'tahmini_bitis_str': tahmini_bitis_str, 
         'kalan_sure_str': kalan_sure_str, 'is_critical': is_critical,
-        'target_volume': target_volume
+        'target_volume': target_volume  # Hedef hacim değerini de döndür
     }
 
 def get_blinking_style(is_critical: bool) -> str:
+    """Kritik durumlar için yanıp sönen kırmızı efekti için CSS stili döndürür."""
     if is_critical:
         return """
         <style>
         @keyframes flashing-red {
-            0%   { background-color: #ff4b4b; color: white; }
-            50%  { background-color: #a02c2c; color: white; }
-            100% { background-color: #ff4b4b; color: white; }
+            0%   { background-color: #ff4b4b; }
+            50%  { background-color: #a02c2c; }
+            100% { background-color: #ff4b4b; }
         }
-        .flash-value {
-            border-radius: 0.25rem;
-            padding: 0.1rem 0.4rem;
-            animation-name: flashing-red;
-            animation-duration: 1.5s;
-            animation-iteration-count: infinite;
+        .flash-metric-container {
+            border-radius: 0.5rem; padding: 0.75rem;
+            animation-name: flashing-red; animation-duration: 1.5s;
+            animation-iteration-count: infinite; text-align: left;
+            border: 1px solid transparent; 
+        }
+        .flash-metric-container .metric-label {
+            font-size: 0.875rem; color: rgba(255, 255, 255, 0.7);
+            font-weight: normal; display: block;
+        }
+        .flash-metric-container .metric-value {
+            font-size: 1.75rem; font-weight: normal;
+            color: white; line-height: 1.4; 
         }
         </style>
         """
     return ""
 
-def handle_target_change(config_ref, tank_no, widget_key):
-    new_volume = st.session_state.get(widget_key)
-    save_target_volume(config_ref, tank_no, new_volume)
-
 def render_tank_card(metrics: Dict, container_key: str, config_ref) -> None:
+    """Tek bir tank izleme kartını oluşturur. Hedef hacim giriş alanı eklenmiştir."""
     if metrics['is_critical']:
         st.markdown(get_blinking_style(True), unsafe_allow_html=True)
     
     with st.container(border=True, key=f"tank_{container_key}"):
-        # --- YENİ YERLEŞİM BAŞLANGICI ---
-
-        # 1. SATIR: Başlıklar
-        row1_cols = st.columns(4)
+        col1, col2, col3, col4 = st.columns(4)
         
-        with row1_cols[0]:
+        # Sol sütun - Tank başlığı ve hedef hacim girişi
+        with col1:
             title = f"T{metrics['tank_no']}"
             if metrics['product_name'] != 'Bilinmiyor':
                 title += f" / {metrics['product_name']}"
-            st.markdown(f"**{title}**")
-
-        with row1_cols[1]:
-            st.markdown("<div style='font-size: 0.9rem;'>Tahmini Bitiş Saati</div>", unsafe_allow_html=True)
-
-        with row1_cols[2]:
-            st.markdown("<div style='font-size: 0.9rem;'>Kalan Süre</div>", unsafe_allow_html=True)
-
-        with row1_cols[3]:
-            st.markdown("<div style='font-size: 0.9rem;'>Rate (m³/h)</div>", unsafe_allow_html=True)
-
-        # 2. SATIR: Veriler ve Giriş Kutusu
-        row2_cols = st.columns(4)
-
-        with row2_cols[0]:
-            widget_key = f"target_{metrics['tank_no']}_{container_key}"
-            st.number_input(
-                "Hedef Hacim",
+            st.markdown(f"<h3 style='margin-bottom: 10px;'>{title}</h3>", unsafe_allow_html=True)
+            
+            # Hedef hacim giriş alanı
+            current_target = metrics.get('target_volume', None)
+            target_input = st.number_input(
+                "Hedef hacim",
                 min_value=0.0,
-                value=float(metrics.get('target_volume') or 0.0),
-                step=10.0,
+                value=current_target if current_target else 0.0,
+                step=1.0,
                 format="%.3f",
-                key=widget_key,
+                key=f"target_{metrics['tank_no']}_{container_key}",
                 label_visibility="collapsed",
-                placeholder="Hedef Hacim...",
-                on_change=handle_target_change,
-                args=(config_ref, metrics['tank_no'], widget_key)
+                placeholder="Hedef hacim"
             )
-
-        with row2_cols[1]:
-            st.markdown(f"<h4>{metrics['tahmini_bitis_str']}</h4>", unsafe_allow_html=True)
+            
+            # Değer değiştiyse Firebase'e kaydet
+            if target_input != current_target:
+                if target_input > 0:
+                    save_target_volume(config_ref, metrics['tank_no'], target_input)
+                else:
+                    save_target_volume(config_ref, metrics['tank_no'], None)
+                st.cache_data.clear()  # Cache'i temizle
+                st.rerun()
         
-        with row2_cols[2]:
-            if metrics['is_critical'] and metrics['kalan_sure_str'] != "N/A":
-                st.markdown(f"<h4 class='flash-value'>{metrics['kalan_sure_str']}</h4>", unsafe_allow_html=True)
-            else:
-                st.markdown(f"<h4>{metrics['kalan_sure_str']}</h4>", unsafe_allow_html=True)
-
-        with row2_cols[3]:
-            st.markdown(f"<h4>{metrics['rate']:.3f}</h4>", unsafe_allow_html=True)
-
-        st.divider()
-
-        # ALT BÖLÜM: İlerleme Çubuğu ve Detaylar
+        col2.metric("Tahmini Bitiş Saati", metrics['tahmini_bitis_str'])
+        
+        if metrics['is_critical'] and metrics['kalan_sure_str'] != "N/A":
+            col3.markdown(f"""
+                <div class='flash-metric-container'>
+                    <div class='metric-label'>Kalan Süre</div>
+                    <div class='metric-value'>{metrics['kalan_sure_str']}</div>
+                </div>""", unsafe_allow_html=True)
+        else:
+            col3.metric("Kalan Süre", metrics['kalan_sure_str'])
+        
+        col4.metric("Rate (m³/h)", f"{metrics['rate']:.3f}")
+        
         p_col, d_col = st.columns([2, 1])
-        with p_col:
-            percentage = metrics['progress_yuzde']
-            color = "#198754"
-            if percentage >= 90: color = "#dc3545"
-            elif percentage >= 75: color = "#ffc107"
-            
-            bar_width_percentage = min(percentage, 100)
-            bar_style = f"width: {bar_width_percentage}%; background-color: {color}; height: 24px; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;"
-            container_style = "width: 100%; background-color: #e9ecef; border-radius: 5px;"
-            html_code = f'<div style="{container_style}"><div style="{bar_style}">{percentage:.1f}%</div></div>'
-            st.markdown(html_code, unsafe_allow_html=True)
+        percentage = metrics['progress_yuzde']
+        color = "#198754"
+        if percentage >= 90: color = "#dc3545"
+        elif percentage >= 75: color = "#ffc107"
+        
+        bar_width_percentage = min(percentage, 100)
+        bar_style = (f"width: {bar_width_percentage}%; background-color: {color}; height: 24px; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;")
+        container_style = "width: 100%; background-color: #e9ecef; border-radius: 5px;"
+        html_code = (f'<div style="{container_style}"><div style="{bar_style}">{percentage:.1f}%</div></div>')
+        p_col.markdown(html_code, unsafe_allow_html=True)
+        
+        vem_str = f"{metrics['vem']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        gov_str = f"{metrics['gov']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        kalan_str = f"{metrics['kalan_hacim']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        
+        # Hedef hacim kullanıldıysa bunu belirt
+        vem_label = "Hedef" if metrics.get('target_volume') else "Vem"
+        
+        detail_html = f"""
+        <div style='font-size: 1.1rem; text-align: center;'>
+            <b>{vem_label}:</b> {vem_str} m³ | <b>GOV:</b> {gov_str} m³ | <b>Kalan:</b> {kalan_str} m³
+        </div>"""
+        d_col.markdown(detail_html, unsafe_allow_html=True)
 
-        with d_col:
-            vem_str = f"{metrics['original_vem']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            gov_str = f"{metrics['gov']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            kalan_str = f"{metrics['kalan_hacim']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            
-            detail_html = f"""
-            <div style='font-size: 1.1rem; text-align: right;'>
-                <b>Vem:</b> {vem_str} m³ | <b>GOV:</b> {gov_str} m³ | <b>Kalan:</b> {kalan_str} m³
-            </div>"""
-            st.markdown(detail_html, unsafe_allow_html=True)
-
+# --- ANA UYGULAMA ---
 def main():
     ref, config_ref = init_firebase()
     
+    # Tank seçimi için multiselect
     tank_selection_col, status_col1, status_col2 = st.columns([3, 4, 1])
     
+    # Mevcut tank listesini VEM_DATA'dan al ve sırala
     available_tanks = sorted(VEM_DATA.keys(), key=lambda x: int(x))
+    
+    # Firebase'den seçili tankları çek
     current_selected_tanks = get_selected_tanks(config_ref)
     
     with tank_selection_col:
@@ -302,42 +333,64 @@ def main():
             label_visibility="collapsed"
         )
         
-        if set(selected_tanks) != set(current_selected_tanks):
+        # Seçim değiştiğinde Firebase'e kaydet
+        if selected_tanks != current_selected_tanks:
             save_selected_tanks(config_ref, selected_tanks)
+            st.cache_data.clear()  # Cache'i temizle
             st.rerun()
-
-    TANKS_TO_MONITOR = selected_tanks
     
+    # Seçili tank listesini kullan
+    TANKS_TO_MONITOR = selected_tanks if selected_tanks else current_selected_tanks
+    
+    # Firebase'den hedef hacim değerlerini al
     target_volumes = get_target_volumes(config_ref)
+    
     all_tanks_data = get_live_data(ref)
     
+    # Timestamp kontrolü - daha toleranslı
     is_data_stale = False
     last_update_str = "Bilinmiyor"
     
     if all_tanks_data and isinstance(all_tanks_data, dict):
         try:
+            # Birden fazla tank'ın timestamp'ini kontrol et
             timestamps = []
             for tank_no, tank_data in all_tanks_data.items():
                 if isinstance(tank_data, dict) and 'updated_at' in tank_data:
                     try:
-                        ts_str = tank_data['updated_at']
-                        last_update_utc = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+                        timestamp_str = tank_data['updated_at']
+                        # Firebase'den gelen Z formatını düzgün parse et
+                        if timestamp_str.endswith('Z'):
+                            last_update_utc = datetime.fromisoformat(timestamp_str[:-1] + '+00:00')
+                        else:
+                            last_update_utc = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
                         timestamps.append(last_update_utc)
-                    except: continue
+                    except:
+                        continue
             
             if timestamps:
+                # En güncel timestamp'i kullan
                 most_recent = max(timestamps)
-                time_diff = (datetime.now(timezone.utc) - most_recent).total_seconds()
-                if time_diff > 15: is_data_stale = True
+                now_utc = datetime.now(timezone.utc)
+                time_diff = (now_utc - most_recent).total_seconds()
                 
+                # 0.25 dakika (15 saniye) tolerans
+                if time_diff > 15:
+                    is_data_stale = True
+                
+                # Türkiye saatine çevir
                 timezone_tr = timezone(timedelta(hours=3))
                 last_update_tr = most_recent.astimezone(timezone_tr)
                 last_update_str = last_update_tr.strftime('%H:%M:%S')
+                
         except Exception:
+            # Herhangi bir hata durumunda veriyi kabul et
             is_data_stale = False
 
-    current_time_str = datetime.now(timezone(timedelta(hours=3))).strftime('%H:%M:%S')
+    timezone_tr = timezone(timedelta(hours=3))
+    current_time_str = datetime.now(timezone_tr).strftime('%H:%M:%S')
 
+    # Durum mesajları güncellendi
     if not ref:
         status_col1.error("Firebase bağlantısı kurulamadı. Lütfen Streamlit Cloud 'Secrets' ayarlarını kontrol edin.")
     elif not all_tanks_data:
@@ -345,17 +398,22 @@ def main():
     elif is_data_stale:
         status_col1.warning(f"Veri güncellenmemiş olabilir. Son güncelleme: {last_update_str}")
     else:
-        if not TANKS_TO_MONITOR:
+        # Tank seçimi kontrolü eklendi
+        if len(TANKS_TO_MONITOR) == 0:
             status_col1.info("İzlenecek tankları seçin. Seçtiğiniz tanklar herkes için geçerli olacaktır!")
         else:
             active_tanks = sum(1 for tank_no in TANKS_TO_MONITOR if tank_no in all_tanks_data)
             status_col1.success(f"{active_tanks}/{len(TANKS_TO_MONITOR)} adet tank izleniyor. Son güncelleme: {current_time_str}")
 
-    if TANKS_TO_MONITOR:
+    # Tank kartlarını sadece seçim varsa göster
+    if TANKS_TO_MONITOR and all_tanks_data and isinstance(all_tanks_data, dict):
         tank_metrics = []
         for tank_no in TANKS_TO_MONITOR:
             data = all_tanks_data.get(tank_no, {})
+            if not data: continue
+            # Hedef hacim değerini al (None olabilir, sorun değil)
             target_vol = target_volumes.get(tank_no)
+            # target_vol None olsa bile calculate_tank_metrics düzgün çalışacak
             metrics = calculate_tank_metrics(tank_no, data, target_vol)
             tank_metrics.append(metrics)
         
@@ -372,6 +430,7 @@ def main():
     
     st.rerun()
 
+# --- YENİ ÇALIŞTIRMA MANTIĞI ---
 if __name__ == "__main__":
     if check_password():
         main()
