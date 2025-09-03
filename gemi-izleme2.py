@@ -13,12 +13,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed" # Kenar çubuğu varsayılan olarak kapalı
 )
 
-# -------------------------------------------------------------------
-# YAPILANDIRMA: İZLENECEK TANKLAR (Varsayılan değer)
-# -------------------------------------------------------------------
-DEFAULT_TANKS_TO_MONITOR = ['195', '173', '176']
-# -------------------------------------------------------------------
-
 # --- STATİK VERİLER (VEM_DATA) ---
 VEM_DATA = {
     "001": 391.791, "002": 389.295, "003": 392.011, "004": 391.557, "005": 389.851, 
@@ -98,15 +92,15 @@ def check_password():
 def get_selected_tanks(_config_ref) -> List[str]:
     """Firebase'den seçili tank listesini çeker."""
     if _config_ref is None:
-        return DEFAULT_TANKS_TO_MONITOR
+        return []  # DEFAULT_TANKS_TO_MONITOR yerine boş liste döndür
     try:
         selected = _config_ref.child('selected_tanks').get()
         if selected and isinstance(selected, list) and len(selected) > 0:
             return selected
         else:
-            return DEFAULT_TANKS_TO_MONITOR
+            return []  # DEFAULT_TANKS_TO_MONITOR yerine boş liste döndür
     except Exception:
-        return DEFAULT_TANKS_TO_MONITOR
+        return []  # DEFAULT_TANKS_TO_MONITOR yerine boş liste döndür
 
 def save_selected_tanks(config_ref, tanks: List[str]):
     """Seçili tank listesini Firebase'e kaydeder."""
@@ -269,7 +263,8 @@ def main():
             "İzlenecek Tanklar:",
             options=available_tanks,
             default=current_selected_tanks,
-            key="tank_selector"
+            key="tank_selector",
+            placeholder="CHOOSE OPTIONS"  # Placeholder metni eklendi
         )
         
         # Seçim değiştiğinde Firebase'e kaydet
@@ -326,6 +321,7 @@ def main():
     timezone_tr = timezone(timedelta(hours=3))
     current_time_str = datetime.now(timezone_tr).strftime('%H:%M:%S')
 
+    # Durum mesajları güncellendi
     if not ref:
         status_col1.error("Firebase bağlantısı kurulamadı. Lütfen Streamlit Cloud 'Secrets' ayarlarını kontrol edin.")
     elif not all_tanks_data:
@@ -333,13 +329,15 @@ def main():
     elif is_data_stale:
         status_col1.warning(f"Veri güncellenmemiş olabilir. Son güncelleme: {last_update_str}")
     else:
-        active_tanks = sum(1 for tank_no in TANKS_TO_MONITOR if tank_no in all_tanks_data)
-        if len(TANKS_TO_MONITOR) > 0:
-            status_col1.success(f"{active_tanks}/{len(TANKS_TO_MONITOR)} adet tank izleniyor. Son güncelleme: {current_time_str}")
+        # Tank seçimi kontrolü eklendi
+        if len(TANKS_TO_MONITOR) == 0:
+            status_col1.info("İzlenecek tankları seçin. Seçtiğiniz tanklar herkes için geçerli olacaktır!")
         else:
-            status_col1.info("Tank seçimi yapılmadı. Lütfen izlenecek tankları seçin.")
+            active_tanks = sum(1 for tank_no in TANKS_TO_MONITOR if tank_no in all_tanks_data)
+            status_col1.success(f"{active_tanks}/{len(TANKS_TO_MONITOR)} adet tank izleniyor. Son güncelleme: {current_time_str}")
 
-    if all_tanks_data and isinstance(all_tanks_data, dict):
+    # Tank kartlarını sadece seçim varsa göster
+    if TANKS_TO_MONITOR and all_tanks_data and isinstance(all_tanks_data, dict):
         tank_metrics = []
         for tank_no in TANKS_TO_MONITOR:
             data = all_tanks_data.get(tank_no, {})
