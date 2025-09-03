@@ -253,14 +253,14 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_
                             unsafe_allow_html=True)
             with sub_c2:
                 st.number_input(
-                    label="Hedef Hacim",
+                    label="Hedef Hacim (Opsiyonel)",
                     value=target_vem if target_vem and target_vem > 0 else None,
                     min_value=0.0,
                     format="%.3f",
                     key=f"target_vem_{metrics['tank_no']}",
                     on_change=save_target_volume,
                     args=(config_ref, metrics['tank_no']),
-                    label_visibility="collapsed"
+                    # label_visibility="collapsed"
                 )
 
         col2.metric("Tahmini Bitiş Saati", metrics['tahmini_bitis_str'])
