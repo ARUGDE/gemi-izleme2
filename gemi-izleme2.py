@@ -383,7 +383,7 @@ def main():
             status_col1.info("İzlenecek tankları seçin. Seçtiğiniz tanklar herkes için geçerli olacaktır!")
         else:
             active_tanks = sum(1 for tank_no in TANKS_TO_MONITOR if tank_no in all_tanks_data)
-            status_col1.success(f"{active_tanks}/{len(TANKS_TO_MONITOR)} adet tank izleniyor. Son güncelleme: {current_time_str}")
+            status_col1.success(f"{active_tanks}/{len(all_tanks_data)} adet tank izleniyor. Son güncelleme: {current_time_str}")
 
     if TANKS_TO_MONITOR and all_tanks_data and isinstance(all_tanks_data, dict):
         tank_metrics = []
