@@ -14,9 +14,9 @@ st.set_page_config(
 )
 
 # -------------------------------------------------------------------
-# YAPILANDIRMA: İZLENECEK TANKLAR
+# YAPILANDIRMA: İZLENECEK TANKLAR (Varsayılan değer)
 # -------------------------------------------------------------------
-TANKS_TO_MONITOR = ['195', '173', '176']
+DEFAULT_TANKS_TO_MONITOR = ['195', '173', '176']
 # -------------------------------------------------------------------
 
 # --- STATİK VERİLER (VEM_DATA) ---
@@ -93,6 +93,30 @@ def check_password():
     # Şifre doğru değilse veya form gönderilmediyse False döndür.
     return False
 
+# --- YENİ FONKSİYON: TANK SEÇİMLERİ İÇİN FİREBASE İŞLEMLERİ ---
+@st.cache_data(ttl=5)
+def get_selected_tanks(_config_ref) -> List[str]:
+    """Firebase'den seçili tank listesini çeker."""
+    if _config_ref is None:
+        return DEFAULT_TANKS_TO_MONITOR
+    try:
+        selected = _config_ref.child('selected_tanks').get()
+        if selected and isinstance(selected, list) and len(selected) > 0:
+            return selected
+        else:
+            return DEFAULT_TANKS_TO_MONITOR
+    except Exception:
+        return DEFAULT_TANKS_TO_MONITOR
+
+def save_selected_tanks(config_ref, tanks: List[str]):
+    """Seçili tank listesini Firebase'e kaydeder."""
+    if config_ref is None:
+        return
+    try:
+        config_ref.child('selected_tanks').set(tanks)
+    except Exception as e:
+        st.error(f"Tank seçimleri kaydedilemedi: {e}")
+
 # --- YARDIMCI FONKSİYONLAR ---
 @st.cache_resource
 def init_firebase():
@@ -103,10 +127,10 @@ def init_firebase():
         cred = credentials.Certificate(dict(cred_dict))
         if not firebase_admin._apps:
             firebase_admin.initialize_app(cred, {'databaseURL': db_url})
-        return db.reference('live_tanks')
+        return db.reference('live_tanks'), db.reference('config')
     except Exception as e:
         st.error(f"Firebase bağlantısı başarısız oldu: {e}")
-        return None
+        return None, None
 
 @st.cache_data(ttl=5)  # TTL'yi 5 saniyeye çıkardık (refresh süresiyle uyumlu)
 def get_live_data(_ref) -> Dict:
@@ -229,8 +253,34 @@ def render_tank_card(metrics: Dict, container_key: str) -> None:
 
 # --- ANA UYGULAMA ---
 def main():
-    ref = init_firebase()
-    status_col1, status_col2 = st.columns([4, 1])
+    ref, config_ref = init_firebase()
+    
+    # Tank seçimi için multiselect
+    tank_selection_col, status_col1, status_col2 = st.columns([3, 4, 1])
+    
+    # Mevcut tank listesini VEM_DATA'dan al ve sırala
+    available_tanks = sorted(VEM_DATA.keys(), key=lambda x: int(x))
+    
+    # Firebase'den seçili tankları çek
+    current_selected_tanks = get_selected_tanks(config_ref)
+    
+    with tank_selection_col:
+        selected_tanks = st.multiselect(
+            "İzlenecek Tanklar:",
+            options=available_tanks,
+            default=current_selected_tanks,
+            key="tank_selector"
+        )
+        
+        # Seçim değiştiğinde Firebase'e kaydet
+        if selected_tanks != current_selected_tanks:
+            save_selected_tanks(config_ref, selected_tanks)
+            st.cache_data.clear()  # Cache'i temizle
+            st.rerun()
+    
+    # Seçili tank listesini kullan
+    TANKS_TO_MONITOR = selected_tanks if selected_tanks else current_selected_tanks
+    
     all_tanks_data = get_live_data(ref)
     
     # Timestamp kontrolü - daha toleranslı
@@ -284,7 +334,7 @@ def main():
         status_col1.warning(f"Veri güncellenmemiş olabilir. Son güncelleme: {last_update_str}")
     else:
         active_tanks = sum(1 for tank_no in TANKS_TO_MONITOR if tank_no in all_tanks_data)
-        status_col1.success(f"{len(TANKS_TO_MONITOR)}/{len(all_tanks_data)} adet tank izleniyor. Son güncelleme: {current_time_str}")
+        status_col1.success(f"{active_tanks}/{len(TANKS_TO_MONITOR)} adet tank izleniyor. Son güncelleme: {current_time_str}")
 
     if all_tanks_data and isinstance(all_tanks_data, dict):
         tank_metrics = []
