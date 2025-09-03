@@ -142,7 +142,6 @@ def get_live_data(_ref) -> Dict:
 def calculate_tank_metrics(tank_no: str, data: Dict, target_volume: Optional[float] = None) -> Dict:
     gov = data.get('gov', 0)
     rate = data.get('rate', 0)
-    
     original_vem = VEM_DATA.get(tank_no, 0)
     
     if target_volume is not None and target_volume > 0:
@@ -184,25 +183,22 @@ def get_blinking_style(is_critical: bool) -> str:
         return """
         <style>
         @keyframes flashing-red {
-            0%   { background-color: #ff4b4b; }
-            50%  { background-color: #a02c2c; }
-            100% { background-color: #ff4b4b; }
+            0%   { background-color: #ff4b4b; color: white; }
+            50%  { background-color: #a02c2c; color: white; }
+            100% { background-color: #ff4b4b; color: white; }
         }
-        .flash-metric-container {
-            border-radius: 0.5rem; padding: 0.75rem;
-            animation-name: flashing-red; animation-duration: 1.5s;
-            animation-iteration-count: infinite; text-align: left;
-            border: 1px solid transparent; 
+        .flash-value {
+            border-radius: 0.25rem;
+            padding: 0.1rem 0.4rem;
+            animation-name: flashing-red;
+            animation-duration: 1.5s;
+            animation-iteration-count: infinite;
         }
-        .flash-metric-container .metric-label { font-size: 0.875rem; color: rgba(255, 255, 255, 0.7); font-weight: normal; display: block; }
-        .flash-metric-container .metric-value { font-size: 1.75rem; font-weight: normal; color: white; line-height: 1.4; }
         </style>
         """
     return ""
 
-# Düzeltme Notu: KeyError hatasını çözmek için yeni callback fonksiyonu
 def handle_target_change(config_ref, tank_no, widget_key):
-    """on_change callback'i için aracı fonksiyon."""
     new_volume = st.session_state.get(widget_key)
     save_target_volume(config_ref, tank_no, new_volume)
 
@@ -211,32 +207,30 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref) -> None:
         st.markdown(get_blinking_style(True), unsafe_allow_html=True)
     
     with st.container(border=True, key=f"tank_{container_key}"):
-        # Üst Satır: Başlık ve Metrikler
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
+        # --- YENİ YERLEŞİM BAŞLANGICI ---
+
+        # 1. SATIR: Başlıklar
+        row1_cols = st.columns(4)
+        
+        with row1_cols[0]:
             title = f"T{metrics['tank_no']}"
             if metrics['product_name'] != 'Bilinmiyor':
                 title += f" / {metrics['product_name']}"
-            st.markdown(f"<h5>{title}</h5>", unsafe_allow_html=True)
+            st.markdown(f"**{title}**")
 
-        col2.metric("Tahmini Bitiş Saati", metrics['tahmini_bitis_str'])
-        if metrics['is_critical'] and metrics['kalan_sure_str'] != "N/A":
-            col3.markdown(f"""
-                <div class='flash-metric-container'>
-                    <div class='metric-label'>Kalan Süre</div>
-                    <div class='metric-value'>{metrics['kalan_sure_str']}</div>
-                </div>""", unsafe_allow_html=True)
-        else:
-            col3.metric("Kalan Süre", metrics['kalan_sure_str'])
-        col4.metric("Rate (m³/h)", f"{metrics['rate']:.3f}")
+        with row1_cols[1]:
+            st.markdown("<div style='font-size: 0.9rem;'>Tahmini Bitiş Saati</div>", unsafe_allow_html=True)
 
-        st.divider() # Ayırıcı çizgi
+        with row1_cols[2]:
+            st.markdown("<div style='font-size: 0.9rem;'>Kalan Süre</div>", unsafe_allow_html=True)
 
-        # Alt Satır: İlerleme Çubuğu, Detaylar ve Hedef Hacim Girişi
-        p_col, d_col = st.columns([2, 1])
-        with p_col:
-            # Hedef Hacim Giriş Alanı
-            st.markdown("<div style='font-size: 0.8rem; margin-bottom: -10px;'>Hedef Hacim (m³)</div>", unsafe_allow_html=True)
+        with row1_cols[3]:
+            st.markdown("<div style='font-size: 0.9rem;'>Rate (m³/h)</div>", unsafe_allow_html=True)
+
+        # 2. SATIR: Veriler ve Giriş Kutusu
+        row2_cols = st.columns(4)
+
+        with row2_cols[0]:
             widget_key = f"target_{metrics['tank_no']}_{container_key}"
             st.number_input(
                 "Hedef Hacim",
@@ -246,11 +240,28 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref) -> None:
                 format="%.3f",
                 key=widget_key,
                 label_visibility="collapsed",
+                placeholder="Hedef Hacim...",
                 on_change=handle_target_change,
                 args=(config_ref, metrics['tank_no'], widget_key)
             )
-            
-            # İlerleme Çubuğu
+
+        with row2_cols[1]:
+            st.markdown(f"<h4>{metrics['tahmini_bitis_str']}</h4>", unsafe_allow_html=True)
+        
+        with row2_cols[2]:
+            if metrics['is_critical'] and metrics['kalan_sure_str'] != "N/A":
+                st.markdown(f"<h4 class='flash-value'>{metrics['kalan_sure_str']}</h4>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"<h4>{metrics['kalan_sure_str']}</h4>", unsafe_allow_html=True)
+
+        with row2_cols[3]:
+            st.markdown(f"<h4>{metrics['rate']:.3f}</h4>", unsafe_allow_html=True)
+
+        st.divider()
+
+        # ALT BÖLÜM: İlerleme Çubuğu ve Detaylar
+        p_col, d_col = st.columns([2, 1])
+        with p_col:
             percentage = metrics['progress_yuzde']
             color = "#198754"
             if percentage >= 90: color = "#dc3545"
@@ -258,18 +269,17 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref) -> None:
             
             bar_width_percentage = min(percentage, 100)
             bar_style = f"width: {bar_width_percentage}%; background-color: {color}; height: 24px; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;"
-            container_style = "width: 100%; background-color: #e9ecef; border-radius: 5px; margin-top: 10px;"
+            container_style = "width: 100%; background-color: #e9ecef; border-radius: 5px;"
             html_code = f'<div style="{container_style}"><div style="{bar_style}">{percentage:.1f}%</div></div>'
             st.markdown(html_code, unsafe_allow_html=True)
 
         with d_col:
-            # Düzeltme Notu: Vem değeri her zaman orijinal VEM'den gösterilir
             vem_str = f"{metrics['original_vem']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
             gov_str = f"{metrics['gov']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
             kalan_str = f"{metrics['kalan_hacim']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
             
             detail_html = f"""
-            <div style='font-size: 1.1rem; text-align: right; padding-top: 55px;'>
+            <div style='font-size: 1.1rem; text-align: right;'>
                 <b>Vem:</b> {vem_str} m³ | <b>GOV:</b> {gov_str} m³ | <b>Kalan:</b> {kalan_str} m³
             </div>"""
             st.markdown(detail_html, unsafe_allow_html=True)
@@ -345,7 +355,6 @@ def main():
         tank_metrics = []
         for tank_no in TANKS_TO_MONITOR:
             data = all_tanks_data.get(tank_no, {})
-            # Düzeltme Notu: Bu döngüdeki 'continue' kaldırıldı, tank verisi olmasa bile kart gösterilir.
             target_vol = target_volumes.get(tank_no)
             metrics = calculate_tank_metrics(tank_no, data, target_vol)
             tank_metrics.append(metrics)
