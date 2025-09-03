@@ -411,8 +411,9 @@ def main():
         for tank_no in TANKS_TO_MONITOR:
             data = all_tanks_data.get(tank_no, {})
             if not data: continue
-            # Hedef hacim değerini al ve hesaplamaya gönder
-            target_vol = target_volumes.get(tank_no, None)
+            # Hedef hacim değerini al (None olabilir, sorun değil)
+            target_vol = target_volumes.get(tank_no)
+            # target_vol None olsa bile calculate_tank_metrics düzgün çalışacak
             metrics = calculate_tank_metrics(tank_no, data, target_vol)
             tank_metrics.append(metrics)
         
