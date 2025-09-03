@@ -108,38 +108,8 @@ def save_selected_tanks(config_ref, tanks: List[str]):
         return
     try:
         config_ref.child('selected_tanks').set(tanks)
-        # Tank seçimi değiştiğinde, artık izlenmeyen tankların hedef hacim verilerini sil
-        current_targets = config_ref.child('target_volumes').get() or {}
-        for tank_no in list(current_targets.keys()):
-            if tank_no not in tanks:
-                config_ref.child('target_volumes').child(tank_no).delete()
     except Exception as e:
         st.error(f"Tank seçimleri kaydedilemedi: {e}")
-
-# --- YENİ FONKSİYON: HEDEF HACİM İŞLEMLERİ ---
-@st.cache_data(ttl=5)
-def get_target_volumes(_config_ref) -> Dict[str, float]:
-    """Firebase'den hedef hacim değerlerini çeker."""
-    if _config_ref is None:
-        return {}
-    try:
-        targets = _config_ref.child('target_volumes').get()
-        return targets if targets else {}
-    except Exception:
-        return {}
-
-def save_target_volume(config_ref, tank_no: str, volume: Optional[float]):
-    """Bir tank için hedef hacim değerini Firebase'e kaydeder."""
-    if config_ref is None:
-        return
-    try:
-        if volume is not None and volume > 0:
-            config_ref.child('target_volumes').child(tank_no).set(volume)
-        else:
-            # Değer geçersizse Firebase'den sil
-            config_ref.child('target_volumes').child(tank_no).delete()
-    except Exception as e:
-        st.error(f"Hedef hacim kaydedilemedi: {e}")
 
 # --- YARDIMCI FONKSİYONLAR ---
 @st.cache_resource
@@ -167,17 +137,11 @@ def get_live_data(_ref) -> Dict:
         st.warning(f"Veri alınırken hata oluştu: {e}")
         return {}
 
-def calculate_tank_metrics(tank_no: str, data: Dict, target_volume: Optional[float] = None) -> Dict:
-    """Tek bir tank için tüm metrikleri hesaplar. Hedef hacim varsa onu kullanır."""
+def calculate_tank_metrics(tank_no: str, data: Dict) -> Dict:
+    """Tek bir tank için tüm metrikleri hesaplar."""
     gov = data.get('gov', 0)
     rate = data.get('rate', 0)
-    
-    # Hedef hacim varsa onu kullan, yoksa VEM_DATA'dan al
-    if target_volume is not None and target_volume > 0:
-        vem = target_volume
-    else:
-        vem = VEM_DATA.get(tank_no, 0)
-    
+    vem = VEM_DATA.get(tank_no, 0)
     product_name = data.get('product', 'Bilinmiyor')
     kalan_hacim = max(vem - gov, 0)
     progress_yuzde = (gov / vem) * 100 if vem > 0 else 0
@@ -203,8 +167,7 @@ def calculate_tank_metrics(tank_no: str, data: Dict, target_volume: Optional[flo
         'tank_no': tank_no, 'product_name': product_name, 'gov': gov, 'rate': rate, 
         'vem': vem, 'kalan_hacim': kalan_hacim, 'progress_yuzde': progress_yuzde, 
         'kalan_saat': kalan_saat, 'tahmini_bitis_str': tahmini_bitis_str, 
-        'kalan_sure_str': kalan_sure_str, 'is_critical': is_critical,
-        'target_volume': target_volume  # Hedef hacim değerini de döndür
+        'kalan_sure_str': kalan_sure_str, 'is_critical': is_critical
     }
 
 def get_blinking_style(is_critical: bool) -> str:
@@ -235,43 +198,18 @@ def get_blinking_style(is_critical: bool) -> str:
         """
     return ""
 
-def render_tank_card(metrics: Dict, container_key: str, config_ref) -> None:
-    """Tek bir tank izleme kartını oluşturur. Hedef hacim giriş alanı eklenmiştir."""
+def render_tank_card(metrics: Dict, container_key: str) -> None:
+    """Tek bir tank izleme kartını oluşturur."""
     if metrics['is_critical']:
         st.markdown(get_blinking_style(True), unsafe_allow_html=True)
     
     with st.container(border=True, key=f"tank_{container_key}"):
         col1, col2, col3, col4 = st.columns(4)
+        title = f"T{metrics['tank_no']}"
+        if metrics['product_name'] != 'Bilinmiyor':
+            title += f" / {metrics['product_name']}"
         
-        # Sol sütun - Tank başlığı ve hedef hacim girişi
-        with col1:
-            title = f"T{metrics['tank_no']}"
-            if metrics['product_name'] != 'Bilinmiyor':
-                title += f" / {metrics['product_name']}"
-            st.markdown(f"<h3 style='margin-bottom: 10px;'>{title}</h3>", unsafe_allow_html=True)
-            
-            # Hedef hacim giriş alanı
-            current_target = metrics.get('target_volume', None)
-            target_input = st.number_input(
-                "Hedef hacim",
-                min_value=0.0,
-                value=current_target if current_target else 0.0,
-                step=1.0,
-                format="%.3f",
-                key=f"target_{metrics['tank_no']}_{container_key}",
-                label_visibility="collapsed",
-                placeholder="Hedef hacim"
-            )
-            
-            # Değer değiştiyse Firebase'e kaydet
-            if target_input != current_target:
-                if target_input > 0:
-                    save_target_volume(config_ref, metrics['tank_no'], target_input)
-                else:
-                    save_target_volume(config_ref, metrics['tank_no'], None)
-                st.cache_data.clear()  # Cache'i temizle
-                st.rerun()
-        
+        col1.markdown(f"<h3>{title}</h3>", unsafe_allow_html=True)
         col2.metric("Tahmini Bitiş Saati", metrics['tahmini_bitis_str'])
         
         if metrics['is_critical'] and metrics['kalan_sure_str'] != "N/A":
@@ -301,12 +239,9 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref) -> None:
         gov_str = f"{metrics['gov']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
         kalan_str = f"{metrics['kalan_hacim']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
         
-        # Hedef hacim kullanıldıysa bunu belirt
-        vem_label = "Hedef" if metrics.get('target_volume') else "Vem"
-        
         detail_html = f"""
         <div style='font-size: 1.1rem; text-align: center;'>
-            <b>{vem_label}:</b> {vem_str} m³ | <b>GOV:</b> {gov_str} m³ | <b>Kalan:</b> {kalan_str} m³
+            <b>Vem:</b> {vem_str} m³ | <b>GOV:</b> {gov_str} m³ | <b>Kalan:</b> {kalan_str} m³
         </div>"""
         d_col.markdown(detail_html, unsafe_allow_html=True)
 
@@ -341,9 +276,6 @@ def main():
     
     # Seçili tank listesini kullan
     TANKS_TO_MONITOR = selected_tanks if selected_tanks else current_selected_tanks
-    
-    # Firebase'den hedef hacim değerlerini al
-    target_volumes = get_target_volumes(config_ref)
     
     all_tanks_data = get_live_data(ref)
     
@@ -411,42 +343,13 @@ def main():
         for tank_no in TANKS_TO_MONITOR:
             data = all_tanks_data.get(tank_no, {})
             if not data: continue
-            # Hedef hacim değerini al (None olabilir, sorun değil)
-            target_vol = target_volumes.get(tank_no)
-            # target_vol None olsa bile calculate_tank_metrics düzgün çalışacak
-            metrics = calculate_tank_metrics(tank_no, data, target_vol)
+            metrics = calculate_tank_metrics(tank_no, data)
             tank_metrics.append(metrics)
         
         tank_metrics.sort(key=lambda x: x['kalan_saat'])
         
         for i, metrics in enumerate(tank_metrics):
-            render_tank_card(metrics, f"{metrics['tank_no']}_{i}", config_ref)
-    
-    # Hedef hacim değişikliklerini kontrol et - SADECE gösterilen tanklar için
-    need_refresh = False
-    if config_ref and TANKS_TO_MONITOR:
-        for tank_no in TANKS_TO_MONITOR:
-            # Sadece ekranda gösterilen tanklar için kontrol yap
-            if tank_no not in all_tanks_data:
-                continue
-                
-            widget_key = f"target_{tank_no}"
-            if widget_key in st.session_state:
-                new_value = st.session_state[widget_key]
-                current_value = target_volumes.get(tank_no, 0.0) or 0.0
-                
-                # Değer gerçekten değiştiyse Firebase'e kaydet
-                if abs(new_value - current_value) > 0.001:  # Float karşılaştırma hassasiyeti
-                    if new_value > 0:
-                        save_target_volume(config_ref, tank_no, new_value)
-                        need_refresh = True
-                    elif current_value > 0:
-                        save_target_volume(config_ref, tank_no, None)
-                        need_refresh = True
-    
-    # Eğer değişiklik varsa cache'i temizle ama rerun tetikleme
-    if need_refresh:
-        st.cache_data.clear()
+            render_tank_card(metrics, f"{metrics['tank_no']}_{i}")
     
     countdown_placeholder = status_col2.empty()
     refresh_saniye = 5
