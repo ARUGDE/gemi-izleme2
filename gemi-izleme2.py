@@ -254,7 +254,7 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_
             # YENİ -> Hedef Hacim giriş alanı eklendi
             st.number_input(
                 label="Hedef Hacim",
-                placeholder="Hedef Hacim (m³)",
+                # placeholder="Hedef Hacim (m³)",
                 value=target_vem if target_vem and target_vem > 0 else None,
                 min_value=0.0,
                 format="%.3f",
