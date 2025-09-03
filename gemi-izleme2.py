@@ -83,7 +83,7 @@ def check_password():
     return False
 
 # --- TANK SEÇİMİ VE HEDEF HACİM İÇİN FİREBASE İŞLEMLERİ ---
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=10)
 def get_selected_tanks(_config_ref: Any) -> List[str]:
     """Firebase'den seçili tank listesini çeker."""
     if _config_ref is None: return []
@@ -102,7 +102,7 @@ def save_selected_tanks(config_ref: Any, tanks: List[str]):
         st.error(f"Tank seçimleri kaydedilemedi: {e}")
 
 # YENİ -> Hedef Hacim verilerini çekmek için
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=10)
 def get_all_target_volumes(_config_ref: Any) -> Dict[str, float]:
     """Firebase'den tüm tanklar için girilmiş hedef hacimlerini çeker."""
     if _config_ref is None: return {}
@@ -156,7 +156,7 @@ def init_firebase() -> tuple:
         st.error(f"Firebase bağlantısı başarısız oldu: {e}")
         return None, None
 
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=10)
 def get_live_data(_ref: Any) -> Dict:
     """Firebase'den canlı veriyi önbelleğe alarak çeker."""
     if _ref is None: return {}
@@ -405,7 +405,7 @@ def main():
             render_tank_card(metrics, f"{metrics['tank_no']}_{i}", config_ref, target_vem_for_card)
     
     countdown_placeholder = status_col2.empty()
-    refresh_saniye = 5
+    refresh_saniye = 10
     for i in range(refresh_saniye, 0, -1):
         countdown_placeholder.write(f"⏳ Sonraki yenileme: {i} sn...")
         time.sleep(1)
