@@ -99,7 +99,7 @@ def init_firebase():
     """Firebase bağlantısını önbelleğe alarak başlatır."""
     try:
         cred_dict = st.secrets["firebase_credentials"]
-        db_url = "https://gemi-izleme-default-rtdb.europe-west1.firebasedatabase.app"
+        db_url = st.secrets["db_url"]
         cred = credentials.Certificate(dict(cred_dict))
         if not firebase_admin._apps:
             firebase_admin.initialize_app(cred, {'databaseURL': db_url})
