@@ -264,7 +264,8 @@ def main():
             options=available_tanks,
             default=current_selected_tanks,
             key="tank_selector",
-            placeholder="İzlenecek tanklar:"  # Placeholder metni eklendi
+            placeholder="İzlenecek tanklar:",
+            label_visibility="collapsed"
         )
         
         # Seçim değiştiğinde Firebase'e kaydet
