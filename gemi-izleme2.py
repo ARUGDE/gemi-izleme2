@@ -260,11 +260,11 @@ def main():
     
     with tank_selection_col:
         selected_tanks = st.multiselect(
-            "İzlenecek Tanklar:",
+            "",
             options=available_tanks,
             default=current_selected_tanks,
             key="tank_selector",
-            placeholder="CHOOSE OPTIONS"  # Placeholder metni eklendi
+            placeholder="İzlenecek tanklar:"  # Placeholder metni eklendi
         )
         
         # Seçim değiştiğinde Firebase'e kaydet
