@@ -246,15 +246,12 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            title = f"T{metrics['tank_no']}"
-            if metrics['product_name'] != 'Bilinmiyor':
-                title += f" / {metrics['product_name']}"
-            st.markdown(f"<h3>{title}</h3>", unsafe_allow_html=True)
-
-            # YENİ -> Hedef Hacim giriş alanı eklendi
+            # İlk satırda Tank No
+            st.markdown(f"<h3>T{metrics['tank_no']}</h3>", unsafe_allow_html=True)
+            
+            # İkinci satırda Hedef Hacim girişi
             st.number_input(
                 label="Hedef Hacim",
-                # placeholder="Hedef Hacim (m³)",
                 value=target_vem if target_vem and target_vem > 0 else None,
                 min_value=0.0,
                 format="%.3f",
@@ -264,6 +261,7 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_
                 label_visibility="collapsed"
             )
 
+        # Diğer sütunlarda bilgiler
         col2.metric("Tahmini Bitiş Saati", metrics['tahmini_bitis_str'])
         
         if metrics['is_critical'] and metrics['kalan_sure_str'] != "N/A":
@@ -305,7 +303,7 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_
 def main():
     ref, config_ref = init_firebase()
     
-    tank_selection_col, status_col1, status_col2 = st.columns([3, 4, 1])
+    tank_selection_col, status_col1, status_col2 = st.columns([3, 3, 2])
     
     available_tanks = sorted(VEM_DATA.keys(), key=lambda x: int(x))
     current_selected_tanks = get_selected_tanks(config_ref)
