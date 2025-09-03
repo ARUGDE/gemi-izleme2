@@ -243,6 +243,7 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_
         st.markdown(get_blinking_style(True), unsafe_allow_html=True)
     
     with st.container(border=True, key=f"tank_{container_key}"):
+        # İlk satır: Tank bilgisi ve metrikler
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
@@ -250,20 +251,7 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_
             if metrics['product_name'] != 'Bilinmiyor':
                 title += f" / {metrics['product_name']}"
             st.markdown(f"<h3>{title}</h3>", unsafe_allow_html=True)
-
-            # YENİ -> Hedef Hacim giriş alanı eklendi
-            st.number_input(
-                label="Hedef Hacim",
-                # placeholder="Hedef Hacim (m³)",
-                value=target_vem if target_vem and target_vem > 0 else None,
-                min_value=0.0,
-                format="%.3f",
-                key=f"target_vem_{metrics['tank_no']}",
-                on_change=save_target_volume,
-                args=(config_ref, metrics['tank_no']),
-                label_visibility="collapsed"
-            )
-
+            
         col2.metric("Tahmini Bitiş Saati", metrics['tahmini_bitis_str'])
         
         if metrics['is_critical'] and metrics['kalan_sure_str'] != "N/A":
@@ -277,6 +265,36 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_
         
         col4.metric("Rate (m³/h)", f"{metrics['rate']:.3f}")
         
+        # İkinci satır: Hedef hacim girişi ve metrik değerleri
+        col5, col6, col7, col8 = st.columns(4)
+        
+        with col5:
+            # YENİ -> Hedef Hacim giriş alanı ikinci satıra taşındı
+            st.number_input(
+                label="Hedef Hacim",
+                value=target_vem if target_vem and target_vem > 0 else None,
+                min_value=0.0,
+                format="%.3f",
+                key=f"target_vem_{metrics['tank_no']}",
+                on_change=save_target_volume,
+                args=(config_ref, metrics['tank_no']),
+                label_visibility="collapsed"
+            )
+        
+        # İkinci satırdaki diğer sütunlar (boş bırakılıyor veya değerler gösterilebilir)
+        with col6:
+            st.write(metrics['tahmini_bitis_str'])  # Saat verisi
+        
+        with col7:
+            if metrics['is_critical'] and metrics['kalan_sure_str'] != "N/A":
+                st.markdown(f"<div style='color: #ff4b4b; font-weight: bold;'>{metrics['kalan_sure_str']}</div>", unsafe_allow_html=True)
+            else:
+                st.write(metrics['kalan_sure_str'])  # Süre verisi
+        
+        with col8:
+            st.write(f"{metrics['rate']:.3f}")  # Rate verisi
+        
+        # İlerleme çubuğu ve hacim detayları
         p_col, d_col = st.columns([2, 1])
         percentage = metrics['progress_yuzde']
         color = "#198754"
