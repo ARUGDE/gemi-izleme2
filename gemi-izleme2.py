@@ -401,7 +401,7 @@ def main():
         for i, metrics in enumerate(tank_metrics):
             # YENİ -> İlgili tankın hedef hacmi kart oluşturma fonksiyonuna da gönderilir
             target_vem_for_card = all_target_volumes.get(metrics['tank_no'])
-            render_tank_card(metrics, f"{metrics['tank_no']}_{i}", config_ref, target_vem_for_card)
+            render_tank_card(metrics, f"tank_{metrics['tank_no']}", config_ref, target_vem_for_card)
     
     countdown_placeholder = status_col2.empty()
     refresh_saniye = 10
