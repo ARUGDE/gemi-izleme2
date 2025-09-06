@@ -330,19 +330,18 @@ def send_high_level_alert(client: Client, metrics: Dict):
     
     try:
         # Secrets'ten değerleri al
-        content_sid = st.secrets.get("TWILIO_CONTENT_SID", "HX229f5a04fd0510ce1b071852155d3e75")
         to_number = st.secrets.get("TWILIO_TO_NUMBER", "whatsapp:+905432601887")
         from_number = "whatsapp:+14155238886"
         
-        # Template değişkenleri: tank_no ve progress_yuzde (örnek olarak, template'e göre uyarla)
+        # Düz metin mesaj oluştur
         tank_no = metrics['tank_no']
-        progress = round(metrics['progress_yuzde'], 1)
-        content_variables = f'{{"1":"{tank_no}", "2":"{progress}"}}'
+        rate = metrics['rate']
+        gov = metrics['gov']
+        message_body = f"🚨 HIGHLEVEL T{tank_no} - Rate: {rate} - GOV: {gov}"
         
         message = client.messages.create(
             from_=from_number,
-            content_sid=content_sid,
-            content_variables=content_variables,
+            body=message_body,
             to=to_number
         )
         
