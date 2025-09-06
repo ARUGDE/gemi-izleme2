@@ -460,9 +460,9 @@ def main():
         for metrics in tank_metrics:
             tank_no = metrics['tank_no']
             if metrics['is_high_level_alarm']:
-                # Spam önleme: Son 10 dakikada gönderilmiş mi?
+                # Spam önleme: Son 1 saatte gönderilmiş mi?
                 last_alert_time = st.session_state['high_level_alerts'].get(tank_no)
-                if last_alert_time is None or (now - datetime.fromisoformat(last_alert_time)).total_seconds() > 600:  # 10 dakika
+                if last_alert_time is None or (now - datetime.fromisoformat(last_alert_time)).total_seconds() > 3600:  # 60 dakika, 1 saat
                     alert_sid = send_high_level_alert(twilio_client, metrics)
                     if alert_sid:
                         st.session_state['high_level_alerts'][tank_no] = now.isoformat()
