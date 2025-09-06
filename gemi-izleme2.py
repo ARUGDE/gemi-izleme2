@@ -188,8 +188,8 @@ def calculate_tank_metrics(tank_no: str, data: Dict, target_vem: Optional[float]
         kalan_saat = (vem - gov) / rate
     
     timezone_tr = timezone(timedelta(hours=3))
-    tahmini_bitis_str = "Hesaplanamadı"
-    kalan_sure_str = "N/A"
+    tahmini_bitis_str = "n/a"
+    kalan_sure_str = "n/a"
     is_critical = False
     
     if kalan_saat != float('inf'):
