@@ -128,6 +128,7 @@ def save_target_volume(config_ref: Any, tank_no: str):
         
         # Diğer kullanıcıların anında görmesi için cache'i temizle
         st.cache_data.clear()
+        st.rerun()  # Anlık güncelleme için rerun tetikle
     except Exception as e:
         st.error(f"Hedef hacim kaydedilemedi: {e}")
 
@@ -237,19 +238,19 @@ def get_blinking_style(is_critical: bool) -> str:
     return ""
 
 # GÜNCELLENDİ -> Hedef hacim girişi için `config_ref` ve `target_vem` parametreleri eklendi
-def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_vem: Optional[float]) -> None:
+def render_tank_card(metrics: Dict, tank_no: str, config_ref: Any, target_vem: Optional[float]) -> None:
     """Tek bir tank izleme kartını oluşturur."""
     if metrics['is_critical']:
         st.markdown(get_blinking_style(True), unsafe_allow_html=True)
 
-    with st.container(border=True, key=f"tank_{container_key}"):
+    with st.container(border=True, key=f"tank_card_{tank_no}"):
         col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
 
         # col1 içinde mini-sütun: başlık + hedef hacim yan yana
         with col1:
             sub_c1, sub_c2 = st.columns([1, 1.5])
             with sub_c1:
-                st.markdown(f"<h2 style='margin:0;'>T{metrics['tank_no']}</h2>",
+                st.markdown(f"<h2 style='margin:0;'>T{tank_no}</h2>",
                             unsafe_allow_html=True)
             with sub_c2:
                 st.number_input(
@@ -257,9 +258,9 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_
                     value=target_vem if target_vem is not None else 0.0,
                     min_value=0.0,
                     format="%.3f",
-                    key=f"target_vem_{metrics['tank_no']}",
+                    key=f"target_vem_{tank_no}",
                     on_change=save_target_volume,
-                    args=(config_ref, metrics['tank_no']),
+                    args=(config_ref, tank_no),
                     # label_visibility="collapsed"
                 )
 
@@ -401,7 +402,7 @@ def main():
         for i, metrics in enumerate(tank_metrics):
             # YENİ -> İlgili tankın hedef hacmi kart oluşturma fonksiyonuna da gönderilir
             target_vem_for_card = all_target_volumes.get(metrics['tank_no'])
-            render_tank_card(metrics, f"{metrics['tank_no']}_{i}", config_ref, target_vem_for_card)
+            render_tank_card(metrics, metrics['tank_no'], config_ref, target_vem_for_card)
     
     countdown_placeholder = status_col2.empty()
     refresh_saniye = 10
