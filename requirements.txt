@@ -1,2 +1,2 @@
 streamlit
-firebase-admin
+firebase-admin"twilio==8.10.0" 

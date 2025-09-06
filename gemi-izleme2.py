@@ -2,6 +2,7 @@ import streamlit as st
 from datetime import datetime, timedelta, timezone
 import firebase_admin
 from firebase_admin import credentials, db
+from twilio.rest import Client
 import json
 from typing import Dict, List, Optional, Any
 import time
@@ -156,6 +157,20 @@ def init_firebase() -> tuple:
         st.error(f"Firebase bağlantısı başarısız oldu: {e}")
         return None, None
 
+@st.cache_resource
+def init_twilio_client():
+    """Twilio client'ını önbelleğe alarak başlatır."""
+    try:
+        account_sid = st.secrets.get("TWILIO_ACCOUNT_SID", "AC450a44faf3362fa799069d4c791c135f")
+        auth_token = st.secrets.get("TWILIO_AUTH_TOKEN", "")
+        if not auth_token:
+            st.warning("Twilio Auth Token secrets'te bulunamadı. WhatsApp bildirimleri çalışmayacak.")
+            return None
+        return Client(account_sid, auth_token)
+    except Exception as e:
+        st.error(f"Twilio bağlantısı başarısız oldu: {e}")
+        return None
+
 @st.cache_data(ttl=10)
 def get_live_data(_ref: Any) -> Dict:
     """Firebase'den canlı veriyi önbelleğe alarak çeker."""
@@ -177,6 +192,10 @@ def calculate_tank_metrics(tank_no: str, data: Dict, target_vem: Optional[float]
         vem = target_vem
     else:
         vem = VEM_DATA.get(tank_no, 0)
+
+    # Statik VEM için HIGH-LEVEL alarm kontrolü (target_vem'i ignore et)
+    static_vem = VEM_DATA.get(tank_no, 0)
+    is_high_level_alarm = gov >= static_vem if static_vem > 0 else False
 
     gov = data.get('gov', 0)
     rate = data.get('rate', 0)
@@ -202,10 +221,11 @@ def calculate_tank_metrics(tank_no: str, data: Dict, target_vem: Optional[float]
         is_critical = kalan_saat <= 0.25
     
     return {
-        'tank_no': tank_no, 'product_name': product_name, 'gov': gov, 'rate': rate, 
-        'vem': vem, 'kalan_hacim': kalan_hacim, 'progress_yuzde': progress_yuzde, 
-        'kalan_saat': kalan_saat, 'tahmini_bitis_str': tahmini_bitis_str, 
-        'kalan_sure_str': kalan_sure_str, 'is_critical': is_critical
+        'tank_no': tank_no, 'product_name': product_name, 'gov': gov, 'rate': rate,
+        'vem': vem, 'static_vem': static_vem, 'kalan_hacim': kalan_hacim,
+        'progress_yuzde': progress_yuzde, 'kalan_saat': kalan_saat,
+        'tahmini_bitis_str': tahmini_bitis_str, 'kalan_sure_str': kalan_sure_str,
+        'is_critical': is_critical, 'is_high_level_alarm': is_high_level_alarm
     }
 
 def get_blinking_style(is_critical: bool) -> str:
@@ -300,9 +320,46 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_
         </div>"""
         d_col.markdown(detail_html, unsafe_allow_html=True)
 
+# --- HIGH-LEVEL ALARM FONKSİYONU ---
+def send_high_level_alert(client: Client, metrics: Dict):
+    """HIGH-LEVEL alarm için Twilio WhatsApp mesajı gönderir."""
+    if client is None:
+        st.warning("Twilio client mevcut değil. Mesaj gönderilemedi.")
+        return
+    
+    try:
+        # Secrets'ten değerleri al
+        content_sid = st.secrets.get("TWILIO_CONTENT_SID", "HX229f5a04fd0510ce1b071852155d3e75")
+        to_number = st.secrets.get("TWILIO_TO_NUMBER", "whatsapp:+905432601887")
+        from_number = "whatsapp:+14155238886"
+        
+        # Template değişkenleri: tank_no ve progress_yuzde (örnek olarak, template'e göre uyarla)
+        tank_no = metrics['tank_no']
+        progress = round(metrics['progress_yuzde'], 1)
+        content_variables = f'{{"1":"{tank_no}", "2":"{progress}"}}'
+        
+        message = client.messages.create(
+            from_=from_number,
+            content_sid=content_sid,
+            content_variables=content_variables,
+            to=to_number
+        )
+        
+        st.success(f"HIGH-LEVEL ALARM gönderildi: Tank {tank_no} (SID: {message.sid})")
+        return message.sid
+        
+    except Exception as e:
+        st.error(f"WhatsApp mesajı gönderilemedi: {e}")
+        return None
+
 # --- ANA UYGULAMA ---
 def main():
     ref, config_ref = init_firebase()
+    twilio_client = init_twilio_client()
+    
+    # Session state için HIGH-LEVEL alarm takibi (spam önleme)
+    if 'high_level_alerts' not in st.session_state:
+        st.session_state['high_level_alerts'] = {}
     
     tank_selection_col, status_col1, status_col2 = st.columns([3, 3, 2])
     
@@ -397,6 +454,18 @@ def main():
             tank_metrics.append(metrics)
         
         tank_metrics.sort(key=lambda x: x['kalan_saat'])
+        
+        # HIGH-LEVEL ALARM KONTROLÜ (tank kartları render edilmeden önce)
+        now = datetime.now()
+        for metrics in tank_metrics:
+            tank_no = metrics['tank_no']
+            if metrics['is_high_level_alarm']:
+                # Spam önleme: Son 10 dakikada gönderilmiş mi?
+                last_alert_time = st.session_state['high_level_alerts'].get(tank_no)
+                if last_alert_time is None or (now - datetime.fromisoformat(last_alert_time)).total_seconds() > 600:  # 10 dakika
+                    alert_sid = send_high_level_alert(twilio_client, metrics)
+                    if alert_sid:
+                        st.session_state['high_level_alerts'][tank_no] = now.isoformat()
         
         for i, metrics in enumerate(tank_metrics):
             # YENİ -> İlgili tankın hedef hacmi kart oluşturma fonksiyonuna da gönderilir
