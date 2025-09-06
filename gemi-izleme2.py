@@ -250,7 +250,7 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_
             sub_c1, sub_c2 = st.columns([1, 1.5])
             with sub_c1:
                 st.markdown(f"<h2 style='margin:0;'>T{metrics['tank_no']}</h2>",
-                            unsafe_allow_html=False)
+                            unsafe_allow_html=True)
             with sub_c2:
                 st.number_input(
                     label="Hedef Hacim (Opsiyonel)",
