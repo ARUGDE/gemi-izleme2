@@ -193,11 +193,12 @@ def calculate_tank_metrics(tank_no: str, data: Dict, target_vem: Optional[float]
     else:
         vem = VEM_DATA.get(tank_no, 0)
 
+    gov = data.get('gov', 0)
+    
     # Statik VEM için HIGH-LEVEL alarm kontrolü (target_vem'i ignore et)
     static_vem = VEM_DATA.get(tank_no, 0)
     is_high_level_alarm = gov >= static_vem if static_vem > 0 else False
 
-    gov = data.get('gov', 0)
     rate = data.get('rate', 0)
     product_name = data.get('product', 'Bilinmiyor')
     kalan_hacim = max(vem - gov, 0)
