@@ -352,6 +352,80 @@ def send_high_level_alert(client: Client, metrics: Dict):
         st.error(f"WhatsApp mesajı gönderilemedi: {e}")
         return None
 
+# --- SESLİ ALARM FONKSİYONU ---
+def play_high_level_audio_alert():
+    """HIGH-LEVEL alarm için 9 saniyelik sesli uyarı çalar."""
+    from streamlit.components.v1 import html
+    
+    js_code = """
+    <script>
+    function playAlarmSound() {
+        // AudioContext oluştur (user gesture gerekebilir)
+        if (!window.audioCtx) {
+            window.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        const audioCtx = window.audioCtx;
+        let currentTime = audioCtx.currentTime;
+
+        // Uzun alarm sesi (0-9 sn) - EKG kodundan uyarlandı
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+
+        osc.type = 'square'; // Kare dalga ile alarm sesi
+        osc.frequency.setValueAtTime(800, currentTime + 0.0); // 800 Hz alarm tonu
+
+        g.gain.setValueAtTime(0, currentTime + 0.0);
+        g.gain.linearRampToValueAtTime(0.7, currentTime + 0.01); // Hacim artışı
+        g.gain.linearRampToValueAtTime(0.7, currentTime + 8.99); // 9 sn sabit
+        g.gain.linearRampToValueAtTime(0, currentTime + 9.0); // Son
+
+        osc.connect(g);
+        g.connect(audioCtx.destination);
+
+        osc.start(currentTime + 0.0);
+        osc.stop(currentTime + 9.1);
+
+        // Temizlik
+        setTimeout(() => {
+            try {
+                if (audioCtx.state === 'running') {
+                    audioCtx.close();
+                }
+            } catch(e) {}
+        }, 9500);
+    }
+
+    // Alarmı tetikle
+    playAlarmSound();
+    </script>
+    """
+    
+    html(js_code, height=0)
+
+# --- SESLİ ALARM TETIKLEYICI ---
+def trigger_audio_alert_if_needed():
+    """Sesli alarmı tetikler (60 dk cooldown ile)."""
+    now = datetime.now()
+    
+    # Session state kontrolü
+    if 'high_level_audio_alert_time' not in st.session_state:
+        st.session_state['high_level_audio_alert_time'] = None
+    
+    last_alert_time = st.session_state['high_level_audio_alert_time']
+    
+    # İlk tetikleme veya 60 dk geçtiyse
+    if last_alert_time is None or (now - last_alert_time).total_seconds() >= 3600:  # 60 dakika
+        play_high_level_audio_alert()
+        st.session_state['high_level_audio_alert_time'] = now
+        st.info("🔊 HIGH-LEVEL ALARM: Sesli uyarı çalıyor (9 sn)...")
+        return True
+    else:
+        # Cooldown mesajı (opsiyonel)
+        remaining = 3600 - (now - last_alert_time).total_seconds()
+        if remaining > 0:
+            st.info(f"🔊 Sesli alarm cooldown: {int(remaining/60)} dakika kaldı.")
+        return False
+
 # --- ANA UYGULAMA ---
 def main():
     ref, config_ref = init_firebase()
@@ -457,15 +531,20 @@ def main():
         
         # HIGH-LEVEL ALARM KONTROLÜ (tank kartları render edilmeden önce)
         now = datetime.now()
+        audio_alert_triggered = False
         for metrics in tank_metrics:
             tank_no = metrics['tank_no']
             if metrics['is_high_level_alarm']:
-                # Spam önleme: Son 1 saatte gönderilmiş mi?
+                # WhatsApp spam önleme: Son 1 saatte gönderilmiş mi?
                 last_alert_time = st.session_state['high_level_alerts'].get(tank_no)
-                if last_alert_time is None or (now - datetime.fromisoformat(last_alert_time)).total_seconds() > 3600:  # 60 dakika, 1 saat
+                if last_alert_time is None or (now - datetime.fromisoformat(last_alert_time)).total_seconds() > 3600:  # 60 dakika
                     alert_sid = send_high_level_alert(twilio_client, metrics)
                     if alert_sid:
                         st.session_state['high_level_alerts'][tank_no] = now.isoformat()
+                        
+                        # İlk tetikleme için sesli alarm (60 dk cooldown, session bazlı)
+                        if not audio_alert_triggered:
+                            audio_alert_triggered = trigger_audio_alert_if_needed()
         
         for i, metrics in enumerate(tank_metrics):
             # YENİ -> İlgili tankın hedef hacmi kart oluşturma fonksiyonuna da gönderilir
