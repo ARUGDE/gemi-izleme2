@@ -2,7 +2,6 @@ import streamlit as st
 from datetime import datetime, timedelta, timezone
 import firebase_admin
 from firebase_admin import credentials, db
-from twilio.rest import Client
 import json
 from typing import Dict, List, Optional, Any
 import time
@@ -157,19 +156,6 @@ def init_firebase() -> tuple:
         st.error(f"Firebase bağlantısı başarısız oldu: {e}")
         return None, None
 
-@st.cache_resource
-def init_twilio_client():
-    """Twilio client'ını önbelleğe alarak başlatır."""
-    try:
-        account_sid = st.secrets.get("TWILIO_ACCOUNT_SID", "AC450a44faf3362fa799069d4c791c135f")
-        auth_token = st.secrets.get("TWILIO_AUTH_TOKEN", "")
-        if not auth_token:
-            st.warning("Twilio Auth Token secrets'te bulunamadı. WhatsApp bildirimleri çalışmayacak.")
-            return None
-        return Client(account_sid, auth_token)
-    except Exception as e:
-        st.error(f"Twilio bağlantısı başarısız oldu: {e}")
-        return None
 
 @st.cache_data(ttl=10)
 def get_live_data(_ref: Any) -> Dict:
@@ -321,35 +307,6 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_
         </div>"""
         d_col.markdown(detail_html, unsafe_allow_html=True)
 
-# --- HIGH-LEVEL ALARM FONKSİYONU ---
-def send_high_level_alert(client: Client, metrics: Dict):
-    """HIGH-LEVEL alarm için Twilio WhatsApp mesajı gönderir."""
-    if client is None:
-        st.warning("Twilio client mevcut değil. Mesaj gönderilemedi.")
-        return
-    
-    try:
-        # Secrets'ten değerleri al
-        to_number = st.secrets.get("TWILIO_TO_NUMBER", "whatsapp:+905432601887")
-        from_number = "whatsapp:+14155238886"
-        
-        # Düz metin mesaj oluştur
-        tank_no = metrics['tank_no']
-        rate = metrics['rate']
-        gov = metrics['gov']
-        message_body = f"HL ⚠️ T{tank_no} - Rate: {rate} - GOV: {gov}"
-        
-        message = client.messages.create(
-            from_=from_number,
-            body=message_body,
-            to=to_number
-        )
-        
-        return message.sid
-        
-    except Exception as e:
-        return None
-
 # --- SESLİ ALARM FONKSİYONU ---
 def play_high_level_audio_alert():
     """HIGH-LEVEL alarm için 9 saniyelik sesli uyarı çalar."""
@@ -433,7 +390,7 @@ def trigger_audio_alert_if_needed(tank_no: str):
     
     # İlk tetikleme veya 10 saat geçtiyse
     if last_alert_time is None or (now - last_alert_time).total_seconds() >= 36000:  # 10 saat
-        # play_high_level_audio_alert()
+        play_high_level_audio_alert()
         st.session_state['high_level_audio_alerts'][tank_no] = now
         return True
     else:
@@ -442,11 +399,10 @@ def trigger_audio_alert_if_needed(tank_no: str):
 # --- ANA UYGULAMA ---
 def main():
     ref, config_ref = init_firebase()
-    twilio_client = init_twilio_client()
     
-    # Session state için HIGH-LEVEL alarm takibi (spam önleme)
-    if 'high_level_alerts' not in st.session_state:
-        st.session_state['high_level_alerts'] = {}
+    # Session state için HIGH-LEVEL sesli alarm takibi (spam önleme)
+    if 'high_level_audio_alerts' not in st.session_state:
+        st.session_state['high_level_audio_alerts'] = {}
     
     tank_selection_col, status_col1, status_col2 = st.columns([3, 3, 2])
     
@@ -542,27 +498,14 @@ def main():
         
         tank_metrics.sort(key=lambda x: x['kalan_saat'])
         
-        # HIGH-LEVEL ALARM KONTROLÜ (hem WhatsApp hem sesli alarm için)
+        # HIGH-LEVEL SESLİ ALARM KONTROLÜ
         now = datetime.now()
         audio_needed = False
         
         for metrics in tank_metrics:
             tank_no = metrics['tank_no']
-            rate = metrics['rate']  # Değişkenleri döngü başında tanımla
-            gov = metrics['gov']
             if metrics['is_high_level_alarm']:
-                # WhatsApp spam önleme: Son 10 saatte gönderilmiş mi?
-                last_alert_time = st.session_state['high_level_alerts'].get(tank_no)
-                if last_alert_time is None or (now - datetime.fromisoformat(last_alert_time)).total_seconds() > 36000:  # 10 saat
-                    alert_sid = send_high_level_alert(twilio_client, metrics)
-                    if alert_sid:
-                        st.session_state['high_level_alerts'][tank_no] = now.isoformat()
-                    else:
-                        pass
-                else:
-                    pass
-                
-                # Sesli alarm tank bazlı kontrol (WhatsApp'dan bağımsız)
+                # Sesli alarm tank bazlı kontrol
                 audio_result = trigger_audio_alert_if_needed(tank_no)
                 if audio_result:
                     audio_needed = True
