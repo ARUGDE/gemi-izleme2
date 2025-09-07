@@ -498,33 +498,38 @@ def main():
         
         tank_metrics.sort(key=lambda x: x['kalan_saat'])
         
-        # HIGH-LEVEL SESLİ ALARM KONTROLÜ
-        now = datetime.now()
-        audio_needed = False
-        
+        # --- DEĞİŞİKLİK 1: SESLİ ALARM KONTROLÜ VE BAYRAK AYARLAMA ---
+        # Sadece alarmın gerekli olup olmadığını kontrol edip bayrak set ediyoruz.
         for metrics in tank_metrics:
             tank_no = metrics['tank_no']
             if metrics['is_high_level_alarm']:
-                # Sesli alarm tank bazlı kontrol
-                audio_result = trigger_audio_alert_if_needed(tank_no)
-                if audio_result:
-                    audio_needed = True
-        
+                now = datetime.now()
+                last_alert_time = st.session_state['high_level_audio_alerts'].get(tank_no)
+                if last_alert_time is None or (now - last_alert_time).total_seconds() >= 36000:
+                    # Sesi hemen çalmak yerine bayrağı ayarla
+                    st.session_state['play_alarm_now'] = True
+                    # Zaman damgasını güncelle
+                    st.session_state['high_level_audio_alerts'][tank_no] = now
+
         for i, metrics in enumerate(tank_metrics):
-            # YENİ -> İlgili tankın hedef hacmi kart oluşturma fonksiyonuna da gönderilir
             target_vem_for_card = all_target_volumes.get(metrics['tank_no'])
             render_tank_card(metrics, f"{metrics['tank_no']}_{i}", config_ref, target_vem_for_card)
-        
-        # SESLİ ALARM: Flag set et ve hemen çal (bir kez)
-        if audio_needed and not st.session_state.get('audio_played_this_cycle', False):
-            st.session_state['audio_played_this_cycle'] = True
-            play_high_level_audio_alert()
     
     countdown_placeholder = status_col2.empty()
     refresh_saniye = 10
     for i in range(refresh_saniye, 0, -1):
         countdown_placeholder.write(f"⏳ Sonraki yenileme: {i} sn...")
         time.sleep(1)
+    
+    # --- DEĞİŞİKLİK 2: SES ÇALMA EYLEMİNİ BURADA GERÇEKLEŞTİR ---
+    # Tüm sayfa render edildikten sonra, bayrağı kontrol et ve sesi çal.
+    if st.session_state.get('play_alarm_now', False):
+        play_high_level_audio_alert()
+        # Bayrağı hemen silerek bir sonraki döngüde tekrar çalmasını önle
+        del st.session_state['play_alarm_now']
+
+    # Not: Buradaki karmaşık `audio_played_this_cycle` mantığına artık ihtiyaç yok.
+    # Bu yeni yapı daha basit ve etkilidir.
     
     st.rerun()
     
