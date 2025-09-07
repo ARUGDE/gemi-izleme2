@@ -392,6 +392,8 @@ def play_high_level_audio_alert():
         playBip(1.3);
         playBip(2.0);
         playBip(2.3);
+        playBip(3.0);
+        playBip(3.3);
         playBip(4.0);
         playBip(4.3);
         playBip(5.0);
@@ -401,6 +403,7 @@ def play_high_level_audio_alert():
         playBip(7.0);
         playBip(7.3);
         playBip(8.0);
+        playBip(8.3);
 
         // Temizlik
         setTimeout(() => {
