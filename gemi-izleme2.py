@@ -327,7 +327,6 @@ def main():
                 delete_target_volume(config_ref, tank_no)
 
             save_selected_tanks(config_ref, selected_tanks)
-            st.session_state["tank_selector"] = selected_tanks
             st.cache_data.clear()
             st.rerun()
     
