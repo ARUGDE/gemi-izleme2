@@ -345,7 +345,7 @@ def send_high_level_alert(client: Client, metrics: Dict):
             to=to_number
         )
         
-        st.success(f"HIGH-LEVEL ALARM gönderildi: HL 🚨 T{tank_no} - Rate: {rate} - GOV: {gov}")
+        st.success(f"🔊 HIGH-LEVEL ALARM 🚨 T{tank_no} - Rate: {rate} - GOV: {gov}")
         return message.sid
         
     except Exception as e:
@@ -367,23 +367,44 @@ def play_high_level_audio_alert():
         const audioCtx = window.audioCtx;
         let currentTime = audioCtx.currentTime;
 
-        // Uzun alarm sesi (0-9 sn) - EKG kodundan uyarlandı
-        const osc = audioCtx.createOscillator();
-        const g = audioCtx.createGain();
+        // Yardımcı fonksiyon (DIT bip sesi)
+        function playBip(start, freq=800, duration=0.07) {
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
 
-        osc.type = 'square'; // Kare dalga ile alarm sesi
-        osc.frequency.setValueAtTime(800, currentTime + 0.0); // 800 Hz alarm tonu
+            oscillator.type = 'square'; // EKG benzeri kare dalga
+            oscillator.frequency.setValueAtTime(freq, currentTime + start);
 
-        g.gain.setValueAtTime(0, currentTime + 0.0);
-        g.gain.linearRampToValueAtTime(0.7, currentTime + 0.01); // Hacim artışı
-        g.gain.linearRampToValueAtTime(0.7, currentTime + 8.99); // 9 sn sabit
-        g.gain.linearRampToValueAtTime(0, currentTime + 9.0); // Son
+            gainNode.gain.setValueAtTime(0, currentTime + start);
+            gainNode.gain.linearRampToValueAtTime(1, currentTime + start + 0.005);
+            gainNode.gain.linearRampToValueAtTime(0, currentTime + start + duration);
 
-        osc.connect(g);
-        g.connect(audioCtx.destination);
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
 
-        osc.start(currentTime + 0.0);
-        osc.stop(currentTime + 9.1);
+            oscillator.start(currentTime + start);
+            oscillator.stop(currentTime + start + duration + 0.05);
+        }
+
+        // 2. Periyot: DIT DIT (boşluk) DIT DIT (boşluk) pattern (0 - 9 sn)
+        // Her çift 0.6 sn (0.07 bip + 0.23 boşluk), 0.7 sn aralıklarla
+        playBip(0.0);
+        playBip(0.3);
+        playBip(1.0);
+        playBip(1.3);
+        playBip(2.0);
+        playBip(2.3);
+        playBip(4.0);
+        playBip(4.3);
+        playBip(5.0);
+        playBip(5.3);
+        playBip(6.0);
+        playBip(6.3);
+        playBip(7.0);
+        playBip(7.3);
+        playBip(8.0);
+        playBip(8.3);
+        playBip(9.0);
 
         // Temizlik
         setTimeout(() => {
@@ -392,7 +413,7 @@ def play_high_level_audio_alert():
                     audioCtx.close();
                 }
             } catch(e) {}
-        }, 9500);
+        }, 10000);
     }
 
     // Alarmı tetikle
@@ -417,7 +438,7 @@ def trigger_audio_alert_if_needed():
     if last_alert_time is None or (now - last_alert_time).total_seconds() >= 3600:  # 60 dakika
         play_high_level_audio_alert()
         st.session_state['high_level_audio_alert_time'] = now
-        st.info("🔊 HIGH-LEVEL ALARM: Sesli uyarı çalıyor (9 sn)...")
+        # st.info("🔊 HIGH-LEVEL ALARM: Sesli uyarı çalıyor (9 sn)...")
         return True
     else:
         # Cooldown mesajı (opsiyonel)
