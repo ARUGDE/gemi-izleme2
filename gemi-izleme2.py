@@ -498,19 +498,20 @@ def main():
         
         tank_metrics.sort(key=lambda x: x['kalan_saat'])
         
-        # --- DEĞİŞİKLİK 1: SESLİ ALARM KONTROLÜ VE BAYRAK AYARLAMA ---
-        # Sadece alarmın gerekli olup olmadığını kontrol edip bayrak set ediyoruz.
+        # --- SESLİ ALARM KONTROLÜ VE BAYRAK AYARLAMA ---
+        # Alarm kontrolünü render'dan önce yap
         for metrics in tank_metrics:
             tank_no = metrics['tank_no']
             if metrics['is_high_level_alarm']:
                 now = datetime.now()
                 last_alert_time = st.session_state['high_level_audio_alerts'].get(tank_no)
                 if last_alert_time is None or (now - last_alert_time).total_seconds() >= 36000:
-                    # Sesi hemen çalmak yerine bayrağı ayarla
+                    # Bayrağı ayarla
                     st.session_state['play_alarm_now'] = True
                     # Zaman damgasını güncelle
                     st.session_state['high_level_audio_alerts'][tank_no] = now
 
+        # Tank kartlarını render et
         for i, metrics in enumerate(tank_metrics):
             target_vem_for_card = all_target_volumes.get(metrics['tank_no'])
             render_tank_card(metrics, f"{metrics['tank_no']}_{i}", config_ref, target_vem_for_card)
@@ -533,11 +534,7 @@ def main():
     
     st.rerun()
     
-    # Her 10 saniyede bir cycle flag'ini temizle (rerun'dan sonra)
-    if st.session_state.get('audio_played_this_cycle', False):
-        time.sleep(10)
-        if 'audio_played_this_cycle' in st.session_state:
-            del st.session_state['audio_played_this_cycle']
+    # Eski cycle mantığı kaldırıldı, artık gerek yok
 
 # --- YENİ ÇALIŞTIRMA MANTIĞI ---
 if __name__ == "__main__":
