@@ -315,7 +315,7 @@ def play_high_level_audio_alert():
     js_code = """
     <script>
     function playAlarmSound() {
-        // AudioContext oluştur (user gesture gerekebilir)
+        // AudioContext oluştur
         if (!window.audioCtx) {
             window.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         }
@@ -341,24 +341,9 @@ def play_high_level_audio_alert():
             oscillator.stop(currentTime + start + duration + 0.05);
         }
 
-        // 2. Periyot: DIT DIT (boşluk) DIT DIT (boşluk) pattern (0 - 9 sn)
-        // Her çift 0.6 sn (0.07 bip + 0.23 boşluk), 0.7 sn aralıklarla
-        playBip(1.0);
-        playBip(1.3);
-        playBip(2.0);
-        playBip(2.3);
-        playBip(3.0);
-        playBip(3.3);
-        playBip(4.0);
-        playBip(4.3);
-        playBip(5.0);
-        playBip(5.3);
-        playBip(6.0);
-        playBip(6.3);
-        playBip(7.0);
-        playBip(7.3);
-        playBip(8.0);
-        playBip(8.3);
+        // DIT DIT pattern (0-9 sn)
+        const bipTimes = [1.0,1.3, 2.0,2.3, 3.0,3.3, 4.0,4.3, 5.0,5.3, 6.0,6.3, 7.0,7.3, 8.0,8.3];
+        bipTimes.forEach(time => playBip(time));
 
         // Temizlik
         setTimeout(() => {
@@ -367,10 +352,10 @@ def play_high_level_audio_alert():
                     audioCtx.close();
                 }
             } catch(e) {}
-        }, 9000);
+        }, 10000);
     }
 
-    // Alarmı tetikle
+    // Alarmı hemen çal
     playAlarmSound();
     </script>
     """
@@ -433,7 +418,6 @@ def main():
     TANKS_TO_MONITOR = selected_tanks if selected_tanks else current_selected_tanks
     
     all_tanks_data = get_live_data(ref)
-    # YENİ -> Tüm hedef hacim verileri en başta çekilir
     all_target_volumes = get_all_target_volumes(config_ref)
 
     # Timestamp kontrolü... (Değişiklik yok)
@@ -498,19 +482,6 @@ def main():
         
         tank_metrics.sort(key=lambda x: x['kalan_saat'])
         
-        # --- SESLİ ALARM KONTROLÜ VE BAYRAK AYARLAMA ---
-        # Alarm kontrolünü render'dan önce yap
-        for metrics in tank_metrics:
-            tank_no = metrics['tank_no']
-            if metrics['is_high_level_alarm']:
-                now = datetime.now()
-                last_alert_time = st.session_state['high_level_audio_alerts'].get(tank_no)
-                if last_alert_time is None or (now - last_alert_time).total_seconds() >= 36000:
-                    # Bayrağı ayarla
-                    st.session_state['play_alarm_now'] = True
-                    # Zaman damgasını güncelle
-                    st.session_state['high_level_audio_alerts'][tank_no] = now
-
         # Tank kartlarını render et
         for i, metrics in enumerate(tank_metrics):
             target_vem_for_card = all_target_volumes.get(metrics['tank_no'])
@@ -522,19 +493,25 @@ def main():
         countdown_placeholder.write(f"⏳ Sonraki yenileme: {i} sn...")
         time.sleep(1)
     
-    # --- DEĞİŞİKLİK 2: SES ÇALMA EYLEMİNİ BURADA GERÇEKLEŞTİR ---
-    # Tüm sayfa render edildikten sonra, bayrağı kontrol et ve sesi çal.
-    if st.session_state.get('play_alarm_now', False):
-        play_high_level_audio_alert()
-        # Bayrağı hemen silerek bir sonraki döngüde tekrar çalmasını önle
-        del st.session_state['play_alarm_now']
-
-    # Not: Buradaki karmaşık `audio_played_this_cycle` mantığına artık ihtiyaç yok.
-    # Bu yeni yapı daha basit ve etkilidir.
+    # --- SESLİ ALARM KONTROLÜ VE ÇALMA (SON) ---
+    # Countdown'dan hemen önce, ama rerun'dan önce alarm kontrolü
+    should_play_alarm = False
+    if TANKS_TO_MONITOR and all_tanks_data and isinstance(all_tanks_data, dict):
+        for metrics in tank_metrics:
+            tank_no = metrics['tank_no']
+            if metrics['is_high_level_alarm']:
+                now = datetime.now()
+                last_alert_time = st.session_state['high_level_audio_alerts'].get(tank_no)
+                if last_alert_time is None or (now - last_alert_time).total_seconds() >= 36000:
+                    # Alarm çal
+                    play_high_level_audio_alert()
+                    st.session_state['high_level_audio_alerts'][tank_no] = now
+                    should_play_alarm = True
+                    break
     
     st.rerun()
     
-    # Eski cycle mantığı kaldırıldı, artık gerek yok
+    # Alarm sesi countdown'dan hemen sonra, rerun'dan önce çalıyor
 
 # --- YENİ ÇALIŞTIRMA MANTIĞI ---
 if __name__ == "__main__":
