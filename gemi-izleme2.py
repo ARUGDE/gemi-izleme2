@@ -345,11 +345,10 @@ def send_high_level_alert(client: Client, metrics: Dict):
             to=to_number
         )
         
-        # st.warning(f"⚠️ HIGH-LEVEL ⚠️ Tank: {tank_no} - Rate: {rate} - GOV: {gov}")
         return message.sid
         
     except Exception as e:
-        # st.error(f"WhatsApp mesajı gönderilemedi: {e}")
+        st.error(f"WhatsApp mesajı gönderilemedi: {e}")
         return None
 
 # --- SESLİ ALARM FONKSİYONU ---
@@ -560,9 +559,8 @@ def main():
                     alert_sid = send_high_level_alert(twilio_client, metrics)
                     if alert_sid:
                         st.session_state['high_level_alerts'][tank_no] = now.isoformat()
-                        # st.warning(f"⚠️ HIGH-LEVEL ⚠️ Tank: {tank_no} - Rate: {rate} - GOV: {gov}")
                     else:
-                        # st.warning(f"⚠️ HIGH-LEVEL ⚠️ Tank: {tank_no} - Rate: {rate} - GOV: {gov} (WhatsApp limiti aşıldı.)")
+                        st.warning(f"⚠️ HIGH-LEVEL ⚠️ Tank: {tank_no} - Rate: {rate} - GOV: {gov} (WhatsApp limiti aşıldı.)")
                 else:
                     pass
         
