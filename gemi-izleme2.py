@@ -571,16 +571,16 @@ def main():
             # YENİ -> İlgili tankın hedef hacmi kart oluşturma fonksiyonuna da gönderilir
             target_vem_for_card = all_target_volumes.get(metrics['tank_no'])
             render_tank_card(metrics, f"{metrics['tank_no']}_{i}", config_ref, target_vem_for_card)
-        
-        # SESLİ ALARM: Tek seferlik html bileşeni (layout bozulmasını önlemek için)
-        if audio_needed:
-            play_high_level_audio_alert()
     
     countdown_placeholder = status_col2.empty()
     refresh_saniye = 10
     for i in range(refresh_saniye, 0, -1):
         countdown_placeholder.write(f"⏳ Sonraki yenileme: {i} sn...")
         time.sleep(1)
+    
+    # SESLİ ALARM: Countdown'dan sonra, sayfanın en altında (layout bozulmasını önlemek için)
+    if audio_needed:
+        play_high_level_audio_alert()
     
     st.rerun()
 
