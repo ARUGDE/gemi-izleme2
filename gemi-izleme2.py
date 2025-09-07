@@ -348,7 +348,6 @@ def send_high_level_alert(client: Client, metrics: Dict):
         return message.sid
         
     except Exception as e:
-        st.error(f"WhatsApp mesajı gönderilemedi: {e}")
         return None
 
 # --- SESLİ ALARM FONKSİYONU ---
@@ -560,7 +559,7 @@ def main():
                     if alert_sid:
                         st.session_state['high_level_alerts'][tank_no] = now.isoformat()
                     else:
-                        st.warning(f"⚠️ HIGH-LEVEL ⚠️ Tank: {tank_no} - Rate: {rate} - GOV: {gov} (WhatsApp limiti aşıldı.)")
+                        pass
                 else:
                     pass
         
