@@ -353,18 +353,10 @@ def send_high_level_alert(client: Client, metrics: Dict):
 # --- SESLİ ALARM FONKSİYONU ---
 def play_high_level_audio_alert():
     """HIGH-LEVEL alarm için 9 saniyelik sesli uyarı çalar."""
-    # Session state ile sadece bir kez tetiklenmesini sağla
-    if st.session_state.get('audio_played', False):
-        return
+    from streamlit.components.v1 import html
     
     js_code = """
     <script>
-    // Streamlit session state'i güncelle
-    window.parent.document.querySelector('iframe').contentWindow.parent.postMessage({
-        type: 'streamlit:setComponentValue',
-        value: true
-    }, '*');
-    
     function playAlarmSound() {
         // AudioContext oluştur (user gesture gerekebilir)
         if (!window.audioCtx) {
@@ -426,8 +418,7 @@ def play_high_level_audio_alert():
     </script>
     """
     
-    st.markdown(js_code, unsafe_allow_html=True)
-    st.session_state['audio_played'] = True
+    html(js_code, height=0)
 
 # --- SESLİ ALARM TETIKLEYICI ---
 def trigger_audio_alert_if_needed(tank_no: str):
@@ -588,15 +579,18 @@ def main():
         time.sleep(1)
     
     # SESLİ ALARM: Countdown'dan sonra, sayfanın en altında (layout bozulmasını önlemek için)
-    if audio_needed:
+    # Session state ile sadece bir kez tetikleme
+    if audio_needed and not st.session_state.get('audio_played_this_cycle', False):
         play_high_level_audio_alert()
-    
-    # Session state'i rerun'dan sonra temizle (9 saniye sonra)
-    if 'audio_played' in st.session_state and st.session_state['audio_played']:
-        time.sleep(9)
-        del st.session_state['audio_played']
+        st.session_state['audio_played_this_cycle'] = True
     
     st.rerun()
+    
+    # Her 10 saniyede bir cycle flag'ini temizle
+    if st.session_state.get('audio_played_this_cycle', False):
+        time.sleep(10)
+        if 'audio_played_this_cycle' in st.session_state:
+            del st.session_state['audio_played_this_cycle']
 
 # --- YENİ ÇALIŞTIRMA MANTIĞI ---
 if __name__ == "__main__":
