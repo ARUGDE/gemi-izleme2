@@ -252,12 +252,15 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_
                 st.markdown(f"<h2 style='margin:0; pointer-events: none; cursor: default;'>T{metrics['tank_no']}</h2>",
                             unsafe_allow_html=True)
             with sub_c2:
+                widget_key = f"target_vem_{metrics['tank_no']}"
+                # Firebase'den gelen değeri session_state ile birleştir
+                input_value = st.session_state.get(widget_key, target_vem if target_vem is not None else 0.0)
                 st.number_input(
                     label="Hedef Hacim (Opsiyonel)",
-                    value=target_vem if target_vem is not None else 0.0,
+                    value=input_value,
                     min_value=0.0,
                     format="%.3f",
-                    key=f"target_vem_{metrics['tank_no']}",
+                    key=widget_key,
                     on_change=save_target_volume,
                     args=(config_ref, metrics['tank_no']),
                     # label_visibility="collapsed"
@@ -289,7 +292,10 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_
         p_col.markdown(html_code, unsafe_allow_html=True)
         
         # Kullanılan hacmin hedef mi yoksa VEM mi olduğunu belirtmek için başlık güncellendi
-        vem_title = "Hedef" if target_vem and target_vem > 0 else "Vem"
+        # Session_state'ten güncel değeri al
+        widget_key = f"target_vem_{metrics['tank_no']}"
+        current_target_vem = st.session_state.get(widget_key, 0.0)
+        vem_title = "Hedef" if current_target_vem > 0 else "Vem"
         vem_str = f"{metrics['vem']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
         gov_str = f"{metrics['gov']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
         kalan_str = f"{metrics['kalan_hacim']:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
