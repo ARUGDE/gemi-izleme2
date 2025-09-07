@@ -561,15 +561,16 @@ def main():
                     alert_sid = send_high_level_alert(twilio_client, metrics)
                     if alert_sid:
                         st.session_state['high_level_alerts'][tank_no] = now.isoformat()
-                        
-                        # İlk tetikleme için sesli alarm (60 dk cooldown, session bazlı)
-                        if not audio_alert_triggered:
-                            audio_alert_triggered = trigger_audio_alert_if_needed()
+                        audio_alert_triggered = True
         
         for i, metrics in enumerate(tank_metrics):
             # YENİ -> İlgili tankın hedef hacmi kart oluşturma fonksiyonuna da gönderilir
             target_vem_for_card = all_target_volumes.get(metrics['tank_no'])
             render_tank_card(metrics, f"{metrics['tank_no']}_{i}", config_ref, target_vem_for_card)
+        
+        # Sesli alarm tetikleme (tank kartlarından SONRA, layout bozmamak için)
+        if audio_alert_triggered:
+            trigger_audio_alert_if_needed()
     
     countdown_placeholder = status_col2.empty()
     refresh_saniye = 10
