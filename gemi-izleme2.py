@@ -423,27 +423,22 @@ def play_high_level_audio_alert():
     html(js_code, height=0)
 
 # --- SESLİ ALARM TETIKLEYICI ---
-def trigger_audio_alert_if_needed():
-    """Sesli alarmı tetikler (60 dk cooldown ile)."""
+def trigger_audio_alert_if_needed(tank_no: str):
+    """Sesli alarmı tetikler (tank bazlı 10 saat cooldown ile)."""
     now = datetime.now()
     
-    # Session state kontrolü
-    if 'high_level_audio_alert_time' not in st.session_state:
-        st.session_state['high_level_audio_alert_time'] = None
+    # Tank bazlı session state
+    if 'high_level_audio_alerts' not in st.session_state:
+        st.session_state['high_level_audio_alerts'] = {}
     
-    last_alert_time = st.session_state['high_level_audio_alert_time']
+    last_alert_time = st.session_state['high_level_audio_alerts'].get(tank_no)
     
-    # İlk tetikleme veya 600 dk, 10 saat geçtiyse
-    if last_alert_time is None or (now - last_alert_time).total_seconds() >= 36000:  # 600 dakika, 10 saat
+    # İlk tetikleme veya 10 saat geçtiyse
+    if last_alert_time is None or (now - last_alert_time).total_seconds() >= 36000:  # 10 saat
         play_high_level_audio_alert()
-        st.session_state['high_level_audio_alert_time'] = now
-        # st.info("🔊 HIGH-LEVEL ALARM: Sesli uyarı çalıyor (9 sn)...")
+        st.session_state['high_level_audio_alerts'][tank_no] = now
         return True
     else:
-        # Cooldown mesajı (opsiyonel)
-        remaining = 36000 - (now - last_alert_time).total_seconds()
-        if remaining > 0:
-            st.info(f"🔊 Sesli alarm cooldown: {int(remaining/60)} dakika kaldı.")
         return False
 
 # --- ANA UYGULAMA ---
