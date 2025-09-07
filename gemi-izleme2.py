@@ -433,7 +433,7 @@ def trigger_audio_alert_if_needed(tank_no: str):
     
     # İlk tetikleme veya 10 saat geçtiyse
     if last_alert_time is None or (now - last_alert_time).total_seconds() >= 36000:  # 10 saat
-        play_high_level_audio_alert()
+        # play_high_level_audio_alert()
         st.session_state['high_level_audio_alerts'][tank_no] = now
         return True
     else:
