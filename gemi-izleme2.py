@@ -542,8 +542,10 @@ def main():
         
         tank_metrics.sort(key=lambda x: x['kalan_saat'])
         
-        # HIGH-LEVEL ALARM KONTROLÜ (WhatsApp için)
+        # HIGH-LEVEL ALARM KONTROLÜ (hem WhatsApp hem sesli alarm için)
         now = datetime.now()
+        audio_needed = False
+        
         for metrics in tank_metrics:
             tank_no = metrics['tank_no']
             rate = metrics['rate']  # Değişkenleri döngü başında tanımla
@@ -559,26 +561,20 @@ def main():
                         pass
                 else:
                     pass
+                
+                # Sesli alarm tank bazlı kontrol (WhatsApp'dan bağımsız)
+                audio_result = trigger_audio_alert_if_needed(tank_no)
+                if audio_result:
+                    audio_needed = True
         
         for i, metrics in enumerate(tank_metrics):
             # YENİ -> İlgili tankın hedef hacmi kart oluşturma fonksiyonuna da gönderilir
             target_vem_for_card = all_target_volumes.get(metrics['tank_no'])
             render_tank_card(metrics, f"{metrics['tank_no']}_{i}", config_ref, target_vem_for_card)
         
-        # SESLİ ALARM: Ana döngü dışına taşındı, tek seferlik tetikleme
-        if 'audio_alert_triggered' not in st.session_state:
-            st.session_state['audio_alert_triggered'] = False
-        
-        # Herhangi bir tankta high-level alarm varsa ve henüz tetiklenmediyse
-        any_high_level_alarm = any(metrics['is_high_level_alarm'] for metrics in tank_metrics)
-        if any_high_level_alarm and not st.session_state['audio_alert_triggered']:
-            # Tank bazlı ses tetikleyici (WhatsApp'dan bağımsız)
-            for metrics in tank_metrics:
-                if metrics['is_high_level_alarm']:
-                    audio_result = trigger_audio_alert_if_needed(metrics['tank_no'])
-                    if audio_result:
-                        st.session_state['audio_alert_triggered'] = True
-                        break
+        # SESLİ ALARM: Tek seferlik html bileşeni (layout bozulmasını önlemek için)
+        if audio_needed:
+            play_high_level_audio_alert()
     
     countdown_placeholder = status_col2.empty()
     refresh_saniye = 10
