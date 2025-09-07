@@ -433,15 +433,15 @@ def trigger_audio_alert_if_needed():
     
     last_alert_time = st.session_state['high_level_audio_alert_time']
     
-    # İlk tetikleme veya 60 dk geçtiyse
-    if last_alert_time is None or (now - last_alert_time).total_seconds() >= 3600:  # 60 dakika
+    # İlk tetikleme veya 600 dk, 10 saat geçtiyse
+    if last_alert_time is None or (now - last_alert_time).total_seconds() >= 36000:  # 600 dakika, 10 saat
         play_high_level_audio_alert()
         st.session_state['high_level_audio_alert_time'] = now
         # st.info("🔊 HIGH-LEVEL ALARM: Sesli uyarı çalıyor (9 sn)...")
         return True
     else:
         # Cooldown mesajı (opsiyonel)
-        remaining = 3600 - (now - last_alert_time).total_seconds()
+        remaining = 36000 - (now - last_alert_time).total_seconds()
         if remaining > 0:
             st.info(f"🔊 Sesli alarm cooldown: {int(remaining/60)} dakika kaldı.")
         return False
@@ -555,13 +555,17 @@ def main():
         for metrics in tank_metrics:
             tank_no = metrics['tank_no']
             if metrics['is_high_level_alarm']:
+                audio_alert_triggered = True  # Ses tetikleyicisini bağımsız yap
+                
                 # WhatsApp spam önleme: Son 1 saatte gönderilmiş mi?
                 last_alert_time = st.session_state['high_level_alerts'].get(tank_no)
-                if last_alert_time is None or (now - datetime.fromisoformat(last_alert_time)).total_seconds() > 3600:  # 60 dakika
+                if last_alert_time is None or (now - datetime.fromisoformat(last_alert_time)).total_seconds() > 36000:  # 60 dakika
                     alert_sid = send_high_level_alert(twilio_client, metrics)
                     if alert_sid:
                         st.session_state['high_level_alerts'][tank_no] = now.isoformat()
-                        audio_alert_triggered = True
+                        st.warning(f"⚠️ HIGH-LEVEL ⚠️ Tank: {tank_no} - Rate: {rate} - GOV: {gov}")
+                    else:
+                        st.warning("⚠️ HIGH-LEVEL ⚠️ Tank: {tank_no} - Rate: {rate} - GOV: {gov} (WhatsApp limiti aşıldı.)")
         
         for i, metrics in enumerate(tank_metrics):
             # YENİ -> İlgili tankın hedef hacmi kart oluşturma fonksiyonuna da gönderilir
@@ -569,8 +573,8 @@ def main():
             render_tank_card(metrics, f"{metrics['tank_no']}_{i}", config_ref, target_vem_for_card)
         
         # Sesli alarm tetikleme (tank kartlarından SONRA, layout bozmamak için)
-        if audio_alert_triggered:
-            trigger_audio_alert_if_needed()
+        # (Artık döngü içinde tank bazlı çağrıldığı için burası gereksiz)
+        pass
     
     countdown_placeholder = status_col2.empty()
     refresh_saniye = 10
