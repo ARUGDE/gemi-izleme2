@@ -242,7 +242,7 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_
     if metrics['is_critical']:
         st.markdown(get_blinking_style(True), unsafe_allow_html=True)
 
-    with st.container(border=True, key=f"tank_{container_key}"):
+    with st.container(border=True, key=f"tank_{metrics['tank_no']}"):
         col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
 
         # col1 içinde mini-sütun: başlık + hedef hacim yan yana
@@ -401,7 +401,7 @@ def main():
         for i, metrics in enumerate(tank_metrics):
             # YENİ -> İlgili tankın hedef hacmi kart oluşturma fonksiyonuna da gönderilir
             target_vem_for_card = all_target_volumes.get(metrics['tank_no'])
-            render_tank_card(metrics, f"{metrics['tank_no']}_{i}", config_ref, target_vem_for_card)
+            render_tank_card(metrics, metrics['tank_no'], config_ref, target_vem_for_card)
     
     countdown_placeholder = status_col2.empty()
     refresh_saniye = 10
