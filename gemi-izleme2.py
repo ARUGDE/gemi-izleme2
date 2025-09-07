@@ -564,7 +564,7 @@ def main():
                     else:
                         st.warning(f"⚠️ HIGH-LEVEL ⚠️ Tank: {tank_no} - Rate: {rate} - GOV: {gov} (WhatsApp limiti aşıldı.)")
                 else:
-                    st.info(f"T{tank_no} WhatsApp cooldown'da (10 saat)")
+                    pass
         
         for i, metrics in enumerate(tank_metrics):
             # YENİ -> İlgili tankın hedef hacmi kart oluşturma fonksiyonuna da gönderilir
