@@ -542,16 +542,13 @@ def main():
         
         tank_metrics.sort(key=lambda x: x['kalan_saat'])
         
-        # HIGH-LEVEL ALARM KONTROLÜ (tank kartları render edilmeden önce)
+        # HIGH-LEVEL ALARM KONTROLÜ (WhatsApp için)
         now = datetime.now()
         for metrics in tank_metrics:
             tank_no = metrics['tank_no']
             rate = metrics['rate']  # Değişkenleri döngü başında tanımla
             gov = metrics['gov']
             if metrics['is_high_level_alarm']:
-                # Tank bazlı ses tetikleyici (WhatsApp'dan bağımsız)
-                audio_result = trigger_audio_alert_if_needed(tank_no)
-                
                 # WhatsApp spam önleme: Son 10 saatte gönderilmiş mi?
                 last_alert_time = st.session_state['high_level_alerts'].get(tank_no)
                 if last_alert_time is None or (now - datetime.fromisoformat(last_alert_time)).total_seconds() > 36000:  # 10 saat
@@ -568,8 +565,20 @@ def main():
             target_vem_for_card = all_target_volumes.get(metrics['tank_no'])
             render_tank_card(metrics, f"{metrics['tank_no']}_{i}", config_ref, target_vem_for_card)
         
-        # Sesli alarm tetikleme kaldırıldı (döngü içinde tank bazlı yapılıyor)
-        pass
+        # SESLİ ALARM: Ana döngü dışına taşındı, tek seferlik tetikleme
+        if 'audio_alert_triggered' not in st.session_state:
+            st.session_state['audio_alert_triggered'] = False
+        
+        # Herhangi bir tankta high-level alarm varsa ve henüz tetiklenmediyse
+        any_high_level_alarm = any(metrics['is_high_level_alarm'] for metrics in tank_metrics)
+        if any_high_level_alarm and not st.session_state['audio_alert_triggered']:
+            # Tank bazlı ses tetikleyici (WhatsApp'dan bağımsız)
+            for metrics in tank_metrics:
+                if metrics['is_high_level_alarm']:
+                    audio_result = trigger_audio_alert_if_needed(metrics['tank_no'])
+                    if audio_result:
+                        st.session_state['audio_alert_triggered'] = True
+                        break
     
     countdown_placeholder = status_col2.empty()
     refresh_saniye = 10
