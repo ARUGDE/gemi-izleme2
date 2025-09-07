@@ -388,8 +388,6 @@ def play_high_level_audio_alert():
 
         // 2. Periyot: DIT DIT (boşluk) DIT DIT (boşluk) pattern (0 - 9 sn)
         // Her çift 0.6 sn (0.07 bip + 0.23 boşluk), 0.7 sn aralıklarla
-        playBip(0.0);
-        playBip(0.3);
         playBip(1.0);
         playBip(1.3);
         playBip(2.0);
@@ -403,8 +401,6 @@ def play_high_level_audio_alert():
         playBip(7.0);
         playBip(7.3);
         playBip(8.0);
-        playBip(8.3);
-        playBip(9.0);
 
         // Temizlik
         setTimeout(() => {
@@ -413,7 +409,7 @@ def play_high_level_audio_alert():
                     audioCtx.close();
                 }
             } catch(e) {}
-        }, 10000);
+        }, 9000);
     }
 
     // Alarmı tetikle
