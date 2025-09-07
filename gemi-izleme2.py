@@ -252,13 +252,17 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_
                 st.markdown(f"<h2 style='margin:0; pointer-events: none; cursor: default;'>T{metrics['tank_no']}</h2>",
                             unsafe_allow_html=True)
             with sub_c2:
+                current_state_val = st.session_state.get(f"target_vem_{metrics['tank_no']}", 0)
+                display_val = None if current_state_val == 0 else (target_vem if target_vem is not None else 0)
+                key_suffix = "_del" if display_val is None else ""
+
                 st.number_input(
                     label="Hedef Hacim (Opsiyonel)",
-                    value=target_vem if target_vem is not None else 0,
+                    value=display_val if display_val is not None else 0,
                     min_value=0,
                     step=1,
                     # format="%.3f",
-                    key=f"target_vem_{metrics['tank_no']}",
+                    key=f"target_vem_{metrics['tank_no']}{key_suffix}",
                     on_change=save_target_volume,
                     args=(config_ref, metrics['tank_no']),
                     # label_visibility="collapsed"
