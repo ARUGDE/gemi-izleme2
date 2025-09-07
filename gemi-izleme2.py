@@ -571,6 +571,11 @@ def main():
             # YENİ -> İlgili tankın hedef hacmi kart oluşturma fonksiyonuna da gönderilir
             target_vem_for_card = all_target_volumes.get(metrics['tank_no'])
             render_tank_card(metrics, f"{metrics['tank_no']}_{i}", config_ref, target_vem_for_card)
+        
+        # SESLİ ALARM: Tank kartlarından sonra, countdown'dan önce (layout stabil)
+        if audio_needed and not st.session_state.get('audio_played_this_cycle', False):
+            play_high_level_audio_alert()
+            st.session_state['audio_played_this_cycle'] = True
     
     countdown_placeholder = status_col2.empty()
     refresh_saniye = 10
@@ -578,15 +583,9 @@ def main():
         countdown_placeholder.write(f"⏳ Sonraki yenileme: {i} sn...")
         time.sleep(1)
     
-    # SESLİ ALARM: Countdown'dan sonra, sayfanın en altında (layout bozulmasını önlemek için)
-    # Session state ile sadece bir kez tetikleme
-    if audio_needed and not st.session_state.get('audio_played_this_cycle', False):
-        play_high_level_audio_alert()
-        st.session_state['audio_played_this_cycle'] = True
-    
     st.rerun()
     
-    # Her 10 saniyede bir cycle flag'ini temizle
+    # Her 10 saniyede bir cycle flag'ini temizle (rerun'dan sonra)
     if st.session_state.get('audio_played_this_cycle', False):
         time.sleep(10)
         if 'audio_played_this_cycle' in st.session_state:
