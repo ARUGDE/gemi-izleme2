@@ -254,8 +254,8 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_
             with sub_c2:
                 st.number_input(
                     label="Hedef Hacim (Opsiyonel)",
-                    value=target_vem if target_vem is not None else 0.0,
-                    min_value=0.0,
+                    value=target_vem if target_vem is not None else 0,
+                    min_value=0,
                     step=1,
                     # format="%.3f",
                     key=f"target_vem_{metrics['tank_no']}",
