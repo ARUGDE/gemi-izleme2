@@ -307,87 +307,116 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_
         </div>"""
         d_col.markdown(detail_html, unsafe_allow_html=True)
 
-# --- SESLİ ALARM FONKSİYONU ---
+# --- DÜZELTİLMİŞ SESLİ ALARM FONKSİYONU ---
 def play_high_level_audio_alert():
-    """HIGH-LEVEL alarm için 9 saniyelik sesli uyarı çalar."""
-    from streamlit.components.v1 import html
+    """HIGH-LEVEL alarm için 9 saniyelik sesli uyarı çalar. Boşluk yaratmaz."""
     
-    js_code = """
-    <script>
-    function playAlarmSound() {
-        // AudioContext oluştur
-        if (!window.audioCtx) {
-            window.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        const audioCtx = window.audioCtx;
-        let currentTime = audioCtx.currentTime;
-
-        // Yardımcı fonksiyon (DIT bip sesi)
-        function playBip(start, freq=800, duration=0.07) {
-            const oscillator = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-
-            oscillator.type = 'square'; // EKG benzeri kare dalga
-            oscillator.frequency.setValueAtTime(freq, currentTime + start);
-
-            gainNode.gain.setValueAtTime(0, currentTime + start);
-            gainNode.gain.linearRampToValueAtTime(1, currentTime + start + 0.005);
-            gainNode.gain.linearRampToValueAtTime(0, currentTime + start + duration);
-
-            oscillator.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-
-            oscillator.start(currentTime + start);
-            oscillator.stop(currentTime + start + duration + 0.05);
-        }
-
-        // DIT DIT pattern (0-9 sn)
-        const bipTimes = [1.0,1.3, 2.0,2.3, 3.0,3.3, 4.0,4.3, 5.0,5.3, 6.0,6.3, 7.0,7.3, 8.0,8.3];
-        bipTimes.forEach(time => playBip(time));
-
-        // Temizlik
-        setTimeout(() => {
-            try {
-                if (audioCtx.state === 'running') {
-                    audioCtx.close();
+    # Session state'te alarm JavaScript'ini sakla
+    if 'alarm_js_injected' not in st.session_state:
+        st.session_state['alarm_js_injected'] = False
+    
+    # JavaScript'i sadece bir kez inject et
+    if not st.session_state['alarm_js_injected']:
+        js_code = """
+        <script>
+        window.playAlarmSound = function() {
+            // AudioContext oluştur
+            if (!window.audioCtx) {
+                try {
+                    window.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                } catch(e) {
+                    console.log('Audio not supported');
+                    return;
                 }
-            } catch(e) {}
-        }, 10000);
-    }
+            }
+            const audioCtx = window.audioCtx;
+            
+            // Kullanıcı etkileşimi gerekiyorsa resume et
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            
+            let currentTime = audioCtx.currentTime;
 
-    // Alarmı hemen çal
-    playAlarmSound();
+            // Yardımcı fonksiyon (DIT bip sesi)
+            function playBip(start, freq=800, duration=0.07) {
+                try {
+                    const oscillator = audioCtx.createOscillator();
+                    const gainNode = audioCtx.createGain();
+
+                    oscillator.type = 'square';
+                    oscillator.frequency.setValueAtTime(freq, currentTime + start);
+
+                    gainNode.gain.setValueAtTime(0, currentTime + start);
+                    gainNode.gain.linearRampToValueAtTime(1, currentTime + start + 0.005);
+                    gainNode.gain.linearRampToValueAtTime(0, currentTime + start + duration);
+
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioCtx.destination);
+
+                    oscillator.start(currentTime + start);
+                    oscillator.stop(currentTime + start + duration + 0.05);
+                } catch(e) {
+                    console.log('Bip error:', e);
+                }
+            }
+
+            // DIT DIT pattern (0-9 sn)
+            const bipTimes = [1.0,1.3, 2.0,2.3, 3.0,3.3, 4.0,4.3, 5.0,5.3, 6.0,6.3, 7.0,7.3, 8.0,8.3];
+            bipTimes.forEach(time => playBip(time));
+        };
+        </script>
+        """
+        
+        # JavaScript'i sayfaya ekle (görünmez, 0 height)
+        st.components.v1.html(js_code, height=0)
+        st.session_state['alarm_js_injected'] = True
+    
+    # Alarmı tetikle
+    trigger_js = """
+    <script>
+    if (window.playAlarmSound) {
+        window.playAlarmSound();
+    }
     </script>
     """
     
-    html(js_code, height=0)
+    # Alarmı tetikle (görünmez)
+    st.components.v1.html(trigger_js, height=0)
 
-# --- SESLİ ALARM TETIKLEYICI ---
-def trigger_audio_alert_if_needed(tank_no: str):
-    """Sesli alarmı tetikler (tank bazlı 10 saat cooldown ile)."""
-    now = datetime.now()
+# --- DÜZELTİLMİŞ ALARM KONTROLÜ ---
+def check_and_trigger_alarms(tank_metrics: List[Dict]) -> bool:
+    """High-level alarmları kontrol eder ve gerekirse tetikler. İlk çalışmada da tetiklenir."""
     
-    # Tank bazlı session state
+    # Session state başlatma
     if 'high_level_audio_alerts' not in st.session_state:
         st.session_state['high_level_audio_alerts'] = {}
     
-    last_alert_time = st.session_state['high_level_audio_alerts'].get(tank_no)
+    if 'app_start_time' not in st.session_state:
+        st.session_state['app_start_time'] = datetime.now()
     
-    # İlk tetikleme veya 10 saat geçtiyse
-    if last_alert_time is None or (now - last_alert_time).total_seconds() >= 36000:  # 10 saat
-        play_high_level_audio_alert()
-        st.session_state['high_level_audio_alerts'][tank_no] = now
-        return True
-    else:
-        return False
+    now = datetime.now()
+    alarm_triggered = False
+    
+    for metrics in tank_metrics:
+        tank_no = metrics['tank_no']
+        
+        if metrics['is_high_level_alarm']:
+            last_alert_time = st.session_state['high_level_audio_alerts'].get(tank_no)
+            
+            # İlk tetikleme veya 10 saat geçtiyse alarm çal
+            if last_alert_time is None or (now - last_alert_time).total_seconds() >= 36000:  # 10 saat
+                play_high_level_audio_alert()
+                st.session_state['high_level_audio_alerts'][tank_no] = now
+                alarm_triggered = True
+                # Sadece bir alarm çalmak için break
+                break
+    
+    return alarm_triggered
 
 # --- ANA UYGULAMA ---
 def main():
     ref, config_ref = init_firebase()
-    
-    # Session state için HIGH-LEVEL sesli alarm takibi (spam önleme)
-    if 'high_level_audio_alerts' not in st.session_state:
-        st.session_state['high_level_audio_alerts'] = {}
     
     tank_selection_col, status_col1, status_col2 = st.columns([3, 3, 2])
     
@@ -469,8 +498,9 @@ def main():
             active_tanks = sum(1 for tank_no in TANKS_TO_MONITOR if tank_no in all_tanks_data)
             status_col1.success(f"{active_tanks}/{len(all_tanks_data)} adet tank izleniyor. Son güncelleme: {current_time_str}")
 
+    # Tank verilerini işle ve alarm kontrolü yap
+    tank_metrics = []
     if TANKS_TO_MONITOR and all_tanks_data and isinstance(all_tanks_data, dict):
-        tank_metrics = []
         for tank_no in TANKS_TO_MONITOR:
             data = all_tanks_data.get(tank_no, {})
             if not data: continue
@@ -482,36 +512,22 @@ def main():
         
         tank_metrics.sort(key=lambda x: x['kalan_saat'])
         
+        # DÜZELTME: Alarm kontrolünü tank kartları render edilmeden önce yap
+        check_and_trigger_alarms(tank_metrics)
+        
         # Tank kartlarını render et
         for i, metrics in enumerate(tank_metrics):
             target_vem_for_card = all_target_volumes.get(metrics['tank_no'])
             render_tank_card(metrics, f"{metrics['tank_no']}_{i}", config_ref, target_vem_for_card)
     
+    # Countdown ve yenileme
     countdown_placeholder = status_col2.empty()
     refresh_saniye = 10
     for i in range(refresh_saniye, 0, -1):
         countdown_placeholder.write(f"⏳ Sonraki yenileme: {i} sn...")
         time.sleep(1)
     
-    # --- SESLİ ALARM KONTROLÜ VE ÇALMA (SON) ---
-    # Countdown'dan hemen önce, ama rerun'dan önce alarm kontrolü
-    should_play_alarm = False
-    if TANKS_TO_MONITOR and all_tanks_data and isinstance(all_tanks_data, dict):
-        for metrics in tank_metrics:
-            tank_no = metrics['tank_no']
-            if metrics['is_high_level_alarm']:
-                now = datetime.now()
-                last_alert_time = st.session_state['high_level_audio_alerts'].get(tank_no)
-                if last_alert_time is None or (now - last_alert_time).total_seconds() >= 36000:
-                    # Alarm çal
-                    play_high_level_audio_alert()
-                    st.session_state['high_level_audio_alerts'][tank_no] = now
-                    should_play_alarm = True
-                    break
-    
     st.rerun()
-    
-    # Alarm sesi countdown'dan hemen sonra, rerun'dan önce çalıyor
 
 # --- YENİ ÇALIŞTIRMA MANTIĞI ---
 if __name__ == "__main__":
