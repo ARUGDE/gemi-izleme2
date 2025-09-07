@@ -327,6 +327,7 @@ def main():
                 delete_target_volume(config_ref, tank_no)
 
             save_selected_tanks(config_ref, selected_tanks)
+            st.session_state["tank_selector"] = selected_tanks
             st.cache_data.clear()
             st.rerun()
     
@@ -386,22 +387,25 @@ def main():
             status_col1.success(f"{active_tanks}/{len(all_tanks_data)} adet tank izleniyor. Son güncelleme: {current_time_str}")
 
     if TANKS_TO_MONITOR and all_tanks_data and isinstance(all_tanks_data, dict):
-        tank_metrics = []
-        for tank_no in TANKS_TO_MONITOR:
-            data = all_tanks_data.get(tank_no, {})
-            if not data: continue
+        tank_placeholder = st.empty()
+        with tank_placeholder.container():
+            tank_metrics = []
+            for tank_no in TANKS_TO_MONITOR:
+                if tank_no not in all_tanks_data: continue
+                data = all_tanks_data.get(tank_no, {})
+                if not data: continue
+                
+                # YENİ -> İlgili tankın hedef hacmi hesaplama fonksiyonuna gönderilir
+                target_vem = all_target_volumes.get(tank_no)
+                metrics = calculate_tank_metrics(tank_no, data, target_vem)
+                tank_metrics.append(metrics)
             
-            # YENİ -> İlgili tankın hedef hacmi hesaplama fonksiyonuna gönderilir
-            target_vem = all_target_volumes.get(tank_no)
-            metrics = calculate_tank_metrics(tank_no, data, target_vem)
-            tank_metrics.append(metrics)
-        
-        tank_metrics.sort(key=lambda x: x['kalan_saat'])
-        
-        for i, metrics in enumerate(tank_metrics):
-            # YENİ -> İlgili tankın hedef hacmi kart oluşturma fonksiyonuna da gönderilir
-            target_vem_for_card = all_target_volumes.get(metrics['tank_no'])
-            render_tank_card(metrics, metrics['tank_no'], config_ref, target_vem_for_card)
+            tank_metrics.sort(key=lambda x: x['kalan_saat'])
+            
+            for i, metrics in enumerate(tank_metrics):
+                # YENİ -> İlgili tankın hedef hacmi kart oluşturma fonksiyonuna da gönderilir
+                target_vem_for_card = all_target_volumes.get(metrics['tank_no'])
+                render_tank_card(metrics, metrics['tank_no'], config_ref, target_vem_for_card)
     
     countdown_placeholder = status_col2.empty()
     refresh_saniye = 10
