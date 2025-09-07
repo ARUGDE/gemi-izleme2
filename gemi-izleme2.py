@@ -353,10 +353,18 @@ def send_high_level_alert(client: Client, metrics: Dict):
 # --- SESLİ ALARM FONKSİYONU ---
 def play_high_level_audio_alert():
     """HIGH-LEVEL alarm için 9 saniyelik sesli uyarı çalar."""
-    from streamlit.components.v1 import html
+    # Session state ile sadece bir kez tetiklenmesini sağla
+    if st.session_state.get('audio_played', False):
+        return
     
     js_code = """
     <script>
+    // Streamlit session state'i güncelle
+    window.parent.document.querySelector('iframe').contentWindow.parent.postMessage({
+        type: 'streamlit:setComponentValue',
+        value: true
+    }, '*');
+    
     function playAlarmSound() {
         // AudioContext oluştur (user gesture gerekebilir)
         if (!window.audioCtx) {
@@ -418,7 +426,8 @@ def play_high_level_audio_alert():
     </script>
     """
     
-    html(js_code, height=0)
+    st.markdown(js_code, unsafe_allow_html=True)
+    st.session_state['audio_played'] = True
 
 # --- SESLİ ALARM TETIKLEYICI ---
 def trigger_audio_alert_if_needed(tank_no: str):
@@ -581,6 +590,11 @@ def main():
     # SESLİ ALARM: Countdown'dan sonra, sayfanın en altında (layout bozulmasını önlemek için)
     if audio_needed:
         play_high_level_audio_alert()
+    
+    # Session state'i rerun'dan sonra temizle (9 saniye sonra)
+    if 'audio_played' in st.session_state and st.session_state['audio_played']:
+        time.sleep(9)
+        del st.session_state['audio_played']
     
     st.rerun()
 
