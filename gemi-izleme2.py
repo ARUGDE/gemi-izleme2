@@ -156,7 +156,6 @@ def init_firebase() -> tuple:
         st.error(f"Firebase bağlantısı başarısız oldu: {e}")
         return None, None
 
-
 @st.cache_data(ttl=10)
 def get_live_data(_ref: Any) -> Dict:
     """Firebase'den canlı veriyi önbelleğe alarak çeker."""
@@ -177,14 +176,9 @@ def calculate_tank_metrics(tank_no: str, data: Dict, target_vem: Optional[float]
     if target_vem and target_vem > 0:
         vem = target_vem
     else:
-        vem = VEM_DATA.get(tank_comno, 0)
+        vem = VEM_DATA.get(tank_no, 0)
 
     gov = data.get('gov', 0)
-    
-    # Statik VEM için HIGH-LEVEL alarm kontrolü (target_vem'i ignore et)
-    static_vem = VEM_DATA.get(tank_no, 0)
-    is_high_level_alarm = gov >= static_vem if static_vem > 0 else False
-
     rate = data.get('rate', 0)
     product_name = data.get('product', 'Bilinmiyor')
     kalan_hacim = max(vem - gov, 0)
@@ -208,11 +202,10 @@ def calculate_tank_metrics(tank_no: str, data: Dict, target_vem: Optional[float]
         is_critical = kalan_saat <= 0.25
     
     return {
-        'tank_no': tank_no, 'product_name': product_name, 'gov': gov, 'rate': rate,
-        'vem': vem, 'static_vem': static_vem, 'kalan_hacim': kalan_hacim,
-        'progress_yuzde': progress_yuzde, 'kalan_saat': kalan_saat,
-        'tahmini_bitis_str': tahmini_bitis_str, 'kalan_sure_str': kalan_sure_str,
-        'is_critical': is_critical, 'is_high_level_alarm': is_high_level_alarm
+        'tank_no': tank_no, 'product_name': product_name, 'gov': gov, 'rate': rate, 
+        'vem': vem, 'kalan_hacim': kalan_hacim, 'progress_yuzde': progress_yuzde, 
+        'kalan_saat': kalan_saat, 'tahmini_bitis_str': tahmini_bitis_str, 
+        'kalan_sure_str': kalan_sure_str, 'is_critical': is_critical
     }
 
 def get_blinking_style(is_critical: bool) -> str:
@@ -307,87 +300,9 @@ def render_tank_card(metrics: Dict, container_key: str, config_ref: Any, target_
         </div>"""
         d_col.markdown(detail_html, unsafe_allow_html=True)
 
-# --- SESLİ ALARM FONKSİYONU ---
-def play_high_level_audio_alert():
-    """HIGH-LEVEL alarm için 9 saniyelik sesli uyarı çalar."""
-    from streamlit.components.v1 import html
-    
-    js_code = """
-    <script>
-    function playAlarmSound() {
-        // AudioContext oluştur
-        if (!window.audioCtx) {
-            window.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        const audioCtx = window.audioCtx;
-        let currentTime = audioCtx.currentTime;
-
-        // Yardımcı fonksiyon (DIT bip sesi)
-        function playBip(start, freq=800, duration=0.07) {
-            const oscillator = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-
-            oscillator.type = 'square'; // EKG benzeri kare dalga
-            oscillator.frequency.setValueAtTime(freq, currentTime + start);
-
-            gainNode.gain.setValueAtTime(0, currentTime + start);
-            gainNode.gain.linearRampToValueAtTime(1, currentTime + start + 0.005);
-            gainNode.gain.linearRampToValueAtTime(0, currentTime + start + duration);
-
-            oscillator.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-
-            oscillator.start(currentTime + start);
-            oscillator.stop(currentTime + start + duration + 0.05);
-        }
-
-        // DIT DIT pattern (0-9 sn)
-        const bipTimes = [1.0,1.3, 2.0,2.3, 3.0,3.3, 4.0,4.3, 5.0,5.3, 6.0,6.3, 7.0,7.3, 8.0,8.3];
-        bipTimes.forEach(time => playBip(time));
-
-        // Temizlik
-        setTimeout(() => {
-            try {
-                if (audioCtx.state === 'running') {
-                    audioCtx.close();
-                }
-            } catch(e) {}
-        }, 10000);
-    }
-
-    // Alarmı hemen çal
-    playAlarmSound();
-    </script>
-    """
-    
-    html(js_code, height=0)
-
-# --- SESLİ ALARM TETIKLEYICI ---
-def trigger_audio_alert_if_needed(tank_no: str):
-    """Sesli alarmı tetikler (tank bazlı 10 saat cooldown ile)."""
-    now = datetime.now()
-    
-    # Tank bazlı session state
-    if 'high_level_audio_alerts' not in st.session_state:
-        st.session_state['high_level_audio_alerts'] = {}
-    
-    last_alert_time = st.session_state['high_level_audio_alerts'].get(tank_no)
-    
-    # İlk tetikleme veya 10 saat geçtiyse
-    if last_alert_time is None or (now - last_alert_time).total_seconds() >= 36000:  # 10 saat
-        play_high_level_audio_alert()
-        st.session_state['high_level_audio_alerts'][tank_no] = now
-        return True
-    else:
-        return False
-
 # --- ANA UYGULAMA ---
 def main():
     ref, config_ref = init_firebase()
-    
-    # Session state için HIGH-LEVEL sesli alarm takibi (spam önleme)
-    if 'high_level_audio_alerts' not in st.session_state:
-        st.session_state['high_level_audio_alerts'] = {}
     
     tank_selection_col, status_col1, status_col2 = st.columns([3, 3, 2])
     
@@ -418,6 +333,7 @@ def main():
     TANKS_TO_MONITOR = selected_tanks if selected_tanks else current_selected_tanks
     
     all_tanks_data = get_live_data(ref)
+    # YENİ -> Tüm hedef hacim verileri en başta çekilir
     all_target_volumes = get_all_target_volumes(config_ref)
 
     # Timestamp kontrolü... (Değişiklik yok)
@@ -482,8 +398,8 @@ def main():
         
         tank_metrics.sort(key=lambda x: x['kalan_saat'])
         
-        # Tank kartlarını render et
         for i, metrics in enumerate(tank_metrics):
+            # YENİ -> İlgili tankın hedef hacmi kart oluşturma fonksiyonuna da gönderilir
             target_vem_for_card = all_target_volumes.get(metrics['tank_no'])
             render_tank_card(metrics, f"{metrics['tank_no']}_{i}", config_ref, target_vem_for_card)
     
@@ -493,25 +409,7 @@ def main():
         countdown_placeholder.write(f"⏳ Sonraki yenileme: {i} sn...")
         time.sleep(1)
     
-    # --- SESLİ ALARM KONTROLÜ VE ÇALMA (SON) ---
-    # Countdown'dan hemen önce, ama rerun'dan önce alarm kontrolü
-    should_play_alarm = False
-    if TANKS_TO_MONITOR and all_tanks_data and isinstance(all_tanks_data, dict):
-        for metrics in tank_metrics:
-            tank_no = metrics['tank_no']
-            if metrics['is_high_level_alarm']:
-                now = datetime.now()
-                last_alert_time = st.session_state['high_level_audio_alerts'].get(tank_no)
-                if last_alert_time is None or (now - last_alert_time).total_seconds() >= 36000:
-                    # Alarm çal
-                    play_high_level_audio_alert()
-                    st.session_state['high_level_audio_alerts'][tank_no] = now
-                    should_play_alarm = True
-                    break
-    
     st.rerun()
-    
-    # Alarm sesi countdown'dan hemen sonra, rerun'dan önce çalıyor
 
 # --- YENİ ÇALIŞTIRMA MANTIĞI ---
 if __name__ == "__main__":
