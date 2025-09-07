@@ -551,29 +551,32 @@ def main():
         
         # HIGH-LEVEL ALARM KONTROLÜ (tank kartları render edilmeden önce)
         now = datetime.now()
-        audio_alert_triggered = False
         for metrics in tank_metrics:
             tank_no = metrics['tank_no']
+            rate = metrics['rate']  # Değişkenleri döngü başında tanımla
+            gov = metrics['gov']
             if metrics['is_high_level_alarm']:
-                audio_alert_triggered = True  # Ses tetikleyicisini bağımsız yap
+                # Tank bazlı ses tetikleyici (WhatsApp'dan bağımsız)
+                audio_result = trigger_audio_alert_if_needed(tank_no)
                 
-                # WhatsApp spam önleme: Son 1 saatte gönderilmiş mi?
+                # WhatsApp spam önleme: Son 10 saatte gönderilmiş mi?
                 last_alert_time = st.session_state['high_level_alerts'].get(tank_no)
-                if last_alert_time is None or (now - datetime.fromisoformat(last_alert_time)).total_seconds() > 36000:  # 60 dakika
+                if last_alert_time is None or (now - datetime.fromisoformat(last_alert_time)).total_seconds() > 36000:  # 10 saat
                     alert_sid = send_high_level_alert(twilio_client, metrics)
                     if alert_sid:
                         st.session_state['high_level_alerts'][tank_no] = now.isoformat()
                         st.warning(f"⚠️ HIGH-LEVEL ⚠️ Tank: {tank_no} - Rate: {rate} - GOV: {gov}")
                     else:
-                        st.warning("⚠️ HIGH-LEVEL ⚠️ Tank: {tank_no} - Rate: {rate} - GOV: {gov} (WhatsApp limiti aşıldı.)")
+                        st.warning(f"⚠️ HIGH-LEVEL ⚠️ Tank: {tank_no} - Rate: {rate} - GOV: {gov} (WhatsApp limiti aşıldı.)")
+                else:
+                    st.info(f"T{tank_no} WhatsApp cooldown'da (10 saat)")
         
         for i, metrics in enumerate(tank_metrics):
             # YENİ -> İlgili tankın hedef hacmi kart oluşturma fonksiyonuna da gönderilir
             target_vem_for_card = all_target_volumes.get(metrics['tank_no'])
             render_tank_card(metrics, f"{metrics['tank_no']}_{i}", config_ref, target_vem_for_card)
         
-        # Sesli alarm tetikleme (tank kartlarından SONRA, layout bozmamak için)
-        # (Artık döngü içinde tank bazlı çağrıldığı için burası gereksiz)
+        # Sesli alarm tetikleme kaldırıldı (döngü içinde tank bazlı yapılıyor)
         pass
     
     countdown_placeholder = status_col2.empty()
