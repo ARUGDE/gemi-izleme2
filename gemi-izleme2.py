@@ -337,7 +337,7 @@ def send_high_level_alert(client: Client, metrics: Dict):
         tank_no = metrics['tank_no']
         rate = metrics['rate']
         gov = metrics['gov']
-        message_body = f"HL 🚨 T{tank_no} - Rate: {rate} - GOV: {gov}"
+        message_body = f"HL ⚠️ T{tank_no} - Rate: {rate} - GOV: {gov}"
         
         message = client.messages.create(
             from_=from_number,
@@ -345,7 +345,7 @@ def send_high_level_alert(client: Client, metrics: Dict):
             to=to_number
         )
         
-        st.success(f"🔊 HIGH-LEVEL ALARM 🚨 T{tank_no} - Rate: {rate} - GOV: {gov}")
+        st.success(f"⚠️ HIGH-LEVEL ⚠️ Tank: {tank_no} - Rate: {rate} - GOV: {gov}")
         return message.sid
         
     except Exception as e:
