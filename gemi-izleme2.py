@@ -345,7 +345,7 @@ def send_high_level_alert(client: Client, metrics: Dict):
             to=to_number
         )
         
-        st.success(f"⚠️ HIGH-LEVEL ⚠️ Tank: {tank_no} - Rate: {rate} - GOV: {gov}")
+        st.warning(f"⚠️ HIGH-LEVEL ⚠️ Tank: {tank_no} - Rate: {rate} - GOV: {gov}")
         return message.sid
         
     except Exception as e:
